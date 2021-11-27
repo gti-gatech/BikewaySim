@@ -1,0 +1,16 @@
+*.json
+*.shp
+*.sbn
+*.sbx
+*.cpg
+*.dbf
+*.prj
+*.qpj
+*.shx
+*.gdb
+*.geojson
+*.pkl
+*.csv
+*.zip
+*.gpkg
+*.dbf
