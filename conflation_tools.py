@@ -27,13 +27,6 @@ import math
 from pathlib import Path
 from node_ids import start_node, end_node
 
-#make directory/pathing more intuitive later
-user_directory = os.fspath(Path.home()) #get home directory and convert to path string
-file_directory = r"\Documents\GitHub\BikewaySimDev" #directory of bikewaysim network processing code
-
-#change this to where you stored this folder
-os.chdir(user_directory+file_directory)
-
 
 def cleaning_process(links, nodes, name):
     
@@ -348,7 +341,7 @@ def add_rest_of_features(base_links,base_nodes,base_name,join_links,join_nodes,j
            lambda row: row[f'{join_name}_point_geo'] if row[f'{base_name}_point_geo'] is None else row[f'{base_name}_point_geo'], axis = 1)
     
     #drop the excess geo column, make sure base is set to active geometry
-    base_links = base_links.drop(columns=[f'{join_name}_line_geo']).set_geometry(f'{base_name}_line_geo')
+    base_links = base_links.drop(columns=[f'{join_name}_line_geo','original_length']).set_geometry(f'{base_name}_line_geo')
     base_nodes = base_nodes.drop(columns=[f'{join_name}_point_geo']).set_geometry(f'{base_name}_point_geo')
     
     return base_links, base_nodes
@@ -357,7 +350,7 @@ def merge_diff_networks(base_links, base_nodes, base_type, join_links, join_node
     
     #notes
     #merging network could have the same nodes
-    #don't mess with ref id till end i think
+    #don't mess with ref id till end
     #need to consider how many ids there will be
     
     #first find nodes that are already present and don't add them
@@ -373,7 +366,6 @@ def merge_diff_networks(base_links, base_nodes, base_type, join_links, join_node
     common_ids = [base_ids for base_ids in base_ids if base_ids in join_ids]
     
     #remove join_nodes that are in base_nodes
-    
     initial_nodes = len(join_nodes)
     
     for name in common_ids:
@@ -416,12 +408,12 @@ def merge_diff_networks(base_links, base_nodes, base_type, join_links, join_node
     
     base_nodes[base_nodes.geometry.name] = base_nodes.apply(
            lambda row: row[join_nodes.geometry.name] if row[base_nodes.geometry.name] is None else row[base_nodes.geometry.name], axis = 1)
-
+    
     #drop the excess geo column, make sure base is set to active geometry
     base_links = base_links.drop(columns=[join_line_geo]).set_geometry(base_line_geo)
     base_nodes = base_nodes.drop(columns=[join_point_geo]).set_geometry(base_point_geo)
 
-    return base_links, join_nodes, connections
+    return base_links, base_nodes#, connections
    
 def add_reference_ids(links, nodes):
 
@@ -450,14 +442,14 @@ def add_reference_ids(links, nodes):
     links.columns = pd.Series(list(links.columns)).str.replace('_ID','_A')
 
     #remove start node and base_node_geo columns
-    links = links.drop(columns=['start_point_geo'])
+    links = links.drop(columns=['start_point_geo',nodes.geometry.name])
         
     #reset geometry
     links = links.set_geometry(links_geo)
      
         
     #do same for end point
-    links['end_point_geo'] = links.apply(start_node_geo, geom= links.geometry.name, axis=1)
+    links['end_point_geo'] = links.apply(end_node_geo, geom= links.geometry.name, axis=1)
     
     #set active geo
     links = links.set_geometry('end_point_geo')
@@ -469,7 +461,7 @@ def add_reference_ids(links, nodes):
     links.columns = pd.Series(list(links.columns)).str.replace('_ID','_B')
  
     #remove end point
-    links = links.drop(columns=['end_point_geo'])
+    links = links.drop(columns=['end_point_geo',nodes.geometry.name])
  
     #reset geometry   
     links = links.set_geometry(links_geo)
@@ -487,7 +479,7 @@ def add_reference_ids(links, nodes):
     
     if a_missing.any() == True | b_missing.any() == True:
         print("There are missing reference ids")
-        
+            
     return links
 
 

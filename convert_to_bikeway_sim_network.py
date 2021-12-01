@@ -8,108 +8,74 @@ Created on Thu Apr 29 15:34:15 2021
 import geopandas as gpd
 import pandas as pd
 import numpy as np
-import os
-from pathlib import Path
 
-#make directory/pathing more intuitive later
-user_directory = os.fspath(Path.home()) #get home directory and convert to path string
-file_directory = "\Documents\GitHub\BikewaySim_Network_Processing" #directory of bikewaysim network processing code
-
-#change this to where you stored this folder
-os.chdir(user_directory+file_directory)
-
-
-#%% Network Import Function
-def import_attributes(network_name, study_area, link_type, nodes_attr = False):
-    
-    linksfp = rf'Processed_Shapefiles/{network_name}/{network_name}_{study_area}_{link_type}_id.geojson' 
-    links = gpd.read_file(linksfp, ignore_geometry = True)
-    
-    #if nodes_attr == True:
-        #implement later
-        #nodesfp = rf'Processed_Shapefiles/{network_name}/{network_name}_{link_type}_nodes.geojson'
-        #nodes = gpd.read_file(nodesfp, ignore_geometry = True)
-    
-    return links #, nodes
-
-
-def import_conflated_network():
-    
-    linksfp = r'Processed_Shapefiles/bikewaysim/bikewaysim_links_v4.geojson'
-    nodesfp = r'Processed_Shapefiles/bikewaysim/bikewaysim_nodes_v4.geojson'
-    
-    links = gpd.read_file(linksfp).set_crs(epsg=2240, allow_override = True) #import network links and project
- 
-    nodes = gpd.read_file(nodesfp).set_crs(epsg=2240, allow_override = True)
-    nodes = nodes.rename(columns={'geometry':'bikwaysim_coords'}).set_geometry('bikwaysim_coords')
-    
-    return links, nodes
-    
 
 #%% Add back in attributes
 
-#look at saving attr information as pickle in the first network import file?
+# add attributes to network
+def merge_network_and_attributes(conflated_network_links, attr_networks):
 
-def merge_network_and_attributes(conflated_network_name, study_area, network_name1, network_name2, network_name3):
-    
-    #conflated_network_name = 'bikewaysim'
-    #study_area = 'study_area'
-    #network_name1 = 'abm'
-    #network_name2 = 'navstreets'
-    #network_name3 = 'osm'
-    #link_type = 'road'
-    
-    
-    #import conflated network
-    conflated_network, conflated_network_nodes = import_conflated_network()
-    
-    #no bike conflated network
-    #conflated_network, conflated_network_nodes = import_conflated_network_nobike()
-    
-    
-    conflated_network = conflated_network.drop_duplicates()
-    
-    #import first attr
-    links_attr1 = import_attributes(network_name1, study_area, 'road')
-    #merge based on network 1 name
-    merged_network1 = pd.merge(conflated_network, links_attr1, how='left', on=['abm_A','abm_B'])
-    
-    del links_attr1
-    
-    #import second attr
-    links_attr2 = import_attributes(network_name2, study_area, 'road')
-    #merge based on network 2 name
-    merged_network2 = pd.merge(merged_network1, links_attr2, how='left', on=['navstreets_A','navstreets_B'])
-    
-    del links_attr2
-    
-    #import third attr
-    links_attr3 = import_attributes(network_name3, study_area, 'bike')
-    #merge based on network 2 name
-    merged_network3 = pd.merge(merged_network2, links_attr3, how='left', on=['osm_A','osm_B'])
-    
-    #export?
-    #merged_network3.to_file(rf'Processed_Shapefiles/bikewaysim/bikewaysim_links_final.geojson', driver='GeoJSON')
-    
-    return merged_network3, conflated_network_nodes
-    
+    #loop through to import base networks to add attributes back to conflated network
+    for attr_network in attr_networks:
 
-#%% Run
+        #get the network name
+        base_cols = list(attr_networks[attr_network].columns)
+        base_id_cols = [base_cols for base_cols in base_cols if "_A_B" in base_cols]
+        network_name = [base_id_cols.split('_')[0] for base_id_cols in base_id_cols]
 
-bikewaysim_links, bikewaysim_nodes = merge_network_and_attributes('bikewaysim', 'study_area', 'abm', 'navstreets', 'osm')
+        #add suffix in case there are duplicate column names
+        attr_networks[attr_network] = attr_networks[attr_network.add_suffix()]
 
+        #see if conflated network has that network
+        if conflated_network_links.columns.isin(network_name) == True:
+            #if it does then do a merge
+            conflated_network_links = pd.merge(conflated_network_links,attr_networks[attr_network],on=network_name,how='left')
+        else:
+            print(f'{network_name} not in conflated network')
+    
+    return conflated_network_links
+  
 
-#%% Attribute Cleaning
+#now that conflated network has all the attributes, will need to deal with conflicting information in future version
+#these need to be manually specified, this code might be better run in Spyder than in Jupyter Notebook
 
-# #need these fields for links
-# A, B, NAME, SPEED_LIMI, SHAPELNGT, FACTYPE
+#streetnames
+#if abm name is present use that, else use the HERE name
+bikewaysim_links['streetname'] = bikewaysim_links.apply(lambda row: row['NAME'] if row['NAME'].isnull() == True else row['ST_NAME'], axis=1)
+#if no streetname exists then put in "placeholder" as the streetname
+bikewaysim_links['streetname'] = bikewaysim_links.apply(lambda row: row['streetname'] if row['streetname'].isnull() == True else 'placeholder', axis=1)
 
-bikewaysim_links['NAME'] = bikewaysim_links.apply(lambda row: row['NAME'] if row['NAME'] == row['NAME'] else row['ST_NAME'], axis=1)
-bikewaysim_links['NAME'] = bikewaysim_links.apply(lambda row: row['NAME'] if row['NAME'] == row['NAME'] else 'placeholder', axis=1)
-
-bikewaysim_links['DISTANCE'] = bikewaysim_links.length
+#speed limits
+#use the ABM speed limit, if none present assume 30mph
 bikewaysim_links['SPEEDLIMIT'] = bikewaysim_links['SPEEDLIMIT'].apply(lambda row: row if row == row else 30)
+
+#facility type
+
+#number of lanes
+
+
+#check on bikewaysim code
+
+#calculate the initial route cost
+bikewaysim_links['distance'] = bikewaysim_links.length
+
+#for streets without a name, put in a placeholder name
+
+
+
+
 bikewaysim_links['FACTYPE'] = bikewaysim_links['FACTYPE'].apply(lambda row: row if row == row else 11)
+
+
+
+#%% deprecated below
+
+
+
+
+
+
+
 
 #%% Facil Filters
 
