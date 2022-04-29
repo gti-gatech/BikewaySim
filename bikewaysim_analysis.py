@@ -28,32 +28,91 @@ os.chdir(user_directory+file_directory)
 
 #network files
 network_dir = user_directory + r'\Documents\BikewaySimData\processed_shapefiles\prepared_network'
-links = gpd.read_file(network_dir+r'\links\links.geojson').to_crs('epsg:4326')
-nodes = gpd.read_file(network_dir+r'\nodes\nodes.geojson').to_crs('epsg:4326')
+links = gpd.read_file(network_dir+r'\links\links.geojson')[['A','B','geometry']]
 
 #ods with match to nearest node (figure out why it's duplicating later)
-ods = pd.read_csv(r'samples_out\single_taz_to_all_node.csv').drop_duplicates()
+ods = pd.read_csv(r'samples_out\single_taz_to_all_node.csv')
+
+#convert o and d matches to lines
+ods['ori_geo'] = gpd.points_from_xy(ods['ori_lon'], ods['ori_lat'], crs ='epsg:4326').to_crs('epsg:2240')
+ods['dest_geo'] = gpd.points_from_xy(ods['dest_lon'], ods['dest_lat'], crs ='epsg:4326').to_crs('epsg:2240')
+ods['ori_match_geo'] = gpd.points_from_xy(ods['ox'], ods['oy'], crs ='epsg:2240')
+ods['dest_match_geo'] = gpd.points_from_xy(ods['dx'], ods['dy'], crs ='epsg:2240')
+
+#lines
+ods['ori_line'] = [LineString(points) for points in zip(ods.ori_geo,ods.ori_match_geo)]
+ods['dest_line'] = [LineString(points) for points in zip(ods.dest_geo,ods.dest_match_geo)]
+
+#filter
+origs = ods[['trip_id','ori_line']]
+dests = ods[['trip_id','dest_line']]
 
 #paths_bike
-paths_bike = pd.read_csv(r'results\dist\paths_bike.csv')
+paths_bike = pd.read_csv(r'results\dist\paths_bike.csv')[['A','B','sequence','trip_id']]
 
 
 #%% map trips function
 
-def map_trips(nodes, links, ods, paths):
+def map_trips(links, origs, dests, paths):
     
     #take in network, od pairs, and paths and output the route taken for each trip
-    paths = paths_bike
     
     #add network geo data to paths
     paths_geo = pd.merge(paths, links, on=['A','B'], how='left')
     
     #add geo for ori/dest rows
-    paths_geo.loc[paths_geo['A']=='origin',] = pd.merge(
-        paths_geo.loc[paths_geo['A']=='origin',], ods, on=['trip_id']).drop_duplicates()
+    origs['A'] = 'origin'
+    dests['B'] = 'destination'
 
-test = pd.merge(paths_geo.loc[paths_geo['A']=='origin',], ods, on=['trip_id'])
+    paths_geo = pd.merge(paths_geo, origs, on=['A','trip_id'], how = 'left')
+    paths_geo = pd.merge(paths_geo, dests, on=['B','trip_id'], how = 'left')
+    
+    #merge geo columns
+    paths_geo = pd.concat([paths_geo[['A','B','sequence','trip_id']], 
+             paths_geo["geometry"].combine_first(paths_geo["ori_line"]).combine_first(paths_geo["dest_line"])], 
+            axis=1)
+    
+    #turn to gdf
+    paths_geo = gpd.GeoDataFrame(paths_geo, geometry='geometry', crs="epsg:2240")
+    
+    #create multilinestring for to show each trip
+    trip_lines = paths_geo.dissolve(by='trip_id')
+    
+    return paths_geo, trip_lines
 
+paths_geo, trip_lines = map_trips(links, origs, dests, paths)
+trip_lines.to_file('dist.geojson',driver='GeoJSON')
+
+#%% redo with perceived
+
+#network files
+network_dir = user_directory + r'\Documents\BikewaySimData\processed_shapefiles\prepared_network'
+links = gpd.read_file(network_dir+r'\links\links.geojson')[['A','B','geometry']]
+
+#ods with match to nearest node (figure out why it's duplicating later)
+ods = pd.read_csv(r'samples_out\single_taz_to_all_node.csv')
+
+#convert o and d matches to lines
+ods['ori_geo'] = gpd.points_from_xy(ods['ori_lon'], ods['ori_lat'], crs ='epsg:4326').to_crs('epsg:2240')
+ods['dest_geo'] = gpd.points_from_xy(ods['dest_lon'], ods['dest_lat'], crs ='epsg:4326').to_crs('epsg:2240')
+ods['ori_match_geo'] = gpd.points_from_xy(ods['ox'], ods['oy'], crs ='epsg:2240')
+ods['dest_match_geo'] = gpd.points_from_xy(ods['dx'], ods['dy'], crs ='epsg:2240')
+
+#lines
+ods['ori_line'] = [LineString(points) for points in zip(ods.ori_geo,ods.ori_match_geo)]
+ods['dest_line'] = [LineString(points) for points in zip(ods.dest_geo,ods.dest_match_geo)]
+
+#filter
+origs = ods[['trip_id','ori_line']]
+dests = ods[['trip_id','dest_line']]
+
+#paths_bike
+paths_bike = pd.read_csv(r'results\per_dist\paths_bike.csv')[['A','B','sequence','trip_id']]
+
+per_paths_geo, per_trip_lines = map_trips(links, origs, dests, paths)
+per_trip_lines.to_file('per_dist.geojson',driver='GeoJSON')
+
+#%%
 
 def map_trips(nodes, links, trip, origins, destinations):
     
@@ -76,7 +135,7 @@ def map_trips(nodes, links, trip, origins, destinations):
 
     # Zip the coordinates into a point object and convert to a GeoDataFrame
     #geometry = [Point(xy) for xy in zip(joined_results.X, joined_results.Y)]
-    #gdf = gpd.GeoDataFrame(joined_results, geometry='geometry')
+    #gpaths_geo = gpd.GeoDataFrame(joined_results, geometry='geometry')
 
     # Aggregate these points with the GroupBy
     lines = joined_results.groupby(['trip_id'])['geometry'].apply(lambda x: LineString(x.to_list()))
