@@ -14,7 +14,7 @@ from pathlib import Path
 
 #make directory/pathing more intuitive later
 user_directory = os.fspath(Path.home()) #get home directory and convert to path string
-file_directory = "\Documents\GitHub\BikewaySim_Network_Processing" #directory of bikewaysim network processing code
+file_directory = "\Documents\BikewaySimData" #directory of bikewaysim network processing code
 
 #change this to where you stored this folder
 os.chdir(user_directory+file_directory)
@@ -70,20 +70,21 @@ def get_random_OD_pairs(poly, num_of_pairs):
 #od_pairs = get_random_OD_pairs(study_area,1000)
 
 
-#%%method 2, TAZ centroids
-abm_nodes = gpd.read_file(r'Processed_Shapefiles/abm/abm_study_area_base_nodes.geojson')
-taz = gpd.read_file(r'Base_Shapefiles/arc/Model_Traffic_Analysis_Zones_2020/Model_Traffic_Analysis_Zones_2020.shp')
+#%%method 2, TAZ centroids, deprecated
+#abm_nodes = gpd.read_file(r'processed_shapefiles/abm/abm_bikewaysim_base_nodes.geojson')
 
-trim_node_id = lambda row: row['abm_ID'].split("100")[1]
-abm_nodes['abm_ID'] = abm_nodes.apply(trim_node_id, axis = 1)
-            
-taz['FID_1'] = taz['FID_1'].astype(str)
-            
-taz_centroids = pd.merge(abm_nodes, taz['FID_1'], left_on = 'abm_ID', right_on = 'FID_1')
+bikewaysim_studyarea = gpd.read_file(r'processed_shapefiles/study_areas/study_area.geojson').to_crs('epsg:4326')
 
+tazs = gpd.read_file(r'base_shapefiles/arc/Model_Traffic_Analysis_Zones_2020/Model_Traffic_Analysis_Zones_2020.shp',
+                     mask=bikewaysim_studyarea)
+
+#get centroid
+tazs['geometry'] = tazs.geometry.centroid
+
+tazs['FID_1'] = tazs['FID_1'].astype(str)
 
 #create list of od pairs
-list_of_ids = taz_centroids['abm_ID'].tolist()
+list_of_ids = tazs['FID_1'].tolist()
 
 ori_id = []
 dest_id = []
@@ -96,12 +97,13 @@ for x in list_of_ids:
             dest_id.append(y)
 od_pairs = pd.DataFrame({'ori_id':ori_id,'dest_id':dest_id})          
             
-# merge geometry info back in and create other columns
-od_pairs = pd.merge(od_pairs,taz_centroids[['abm_ID','geometry']], left_on = 'ori_id', right_on = 'abm_ID', how='left')
-od_pairs = od_pairs.rename(columns={'geometry':'ori_geometry'}).drop(columns={'abm_ID'})
 
-od_pairs = pd.merge(od_pairs,taz_centroids[['abm_ID','geometry']], left_on = 'dest_id', right_on = 'abm_ID', how='left')
-od_pairs = od_pairs.rename(columns={'geometry':'dest_geometry'}).drop(columns={'abm_ID'})
+# merge geometry info back in and create other columns
+od_pairs = pd.merge(od_pairs,tazs[['FID_1','geometry']], left_on = 'ori_id', right_on = 'FID_1', how='left')
+od_pairs = od_pairs.rename(columns={'geometry':'ori_geometry'}).drop(columns={'FID_1'})
+
+od_pairs = pd.merge(od_pairs,tazs[['FID_1','geometry']], left_on = 'dest_id', right_on = 'FID_1', how='left')
+od_pairs = od_pairs.rename(columns={'geometry':'dest_geometry'}).drop(columns={'FID_1'})
 
 od_pairs = od_pairs.set_geometry('ori_geometry').to_crs(epsg=4326)
 od_pairs['ori_lat'] = od_pairs.geometry.y
@@ -112,8 +114,24 @@ od_pairs['dest_lat'] = od_pairs.geometry.y
 od_pairs['dest_lon'] = od_pairs.geometry.x
 
 od_pairs['trip_id'] = od_pairs['ori_id'] + '_' + od_pairs['dest_id']
-od_pairs = od_pairs[['trip_id','ori_lat','ori_lon','dest_lat','dest_lon']]
+od_pairs = od_pairs[['trip_id','ori_id','dest_id','ori_lat','ori_lon','dest_lat','dest_lon']]
+
+#%% alt method 2
+
+#tazs = gpd.read_file('demonstration_viz/tazs.geojson', ignore_geometry=True)
+
+#get rid of excess columns
+
+
+#%% create OD folders
 
 #export         
-od_pairs.to_csv('od_pairs/od_pairs.csv', index = False)
+#od_pairs.to_csv('od_pairs/od_pairs.csv', index = False)
 
+#%% for viz
+
+#for aggregate impedance
+single_taz_to_all = od_pairs[od_pairs['ori_id'] == '538']
+
+#export
+single_taz_to_all.to_csv('bikewaysim_outputs/samples_in/single_taz_to_all.csv', index = False)

@@ -18,36 +18,39 @@ from shapely.geometry import Point, LineString
 
 #%%
 
-def add_nodes(links, studyarea_name, network_name, link_type, network_mapper, A = None, B = None):
+# def add_nodes(links, studyarea_name, network_name, network_mapper, A = None, B = None):
     	
-    #figure out where network mapper needs to be added
-    if A is not None and B is not None:
-    	#first rename the nodes and column names
-        links = rename_nodes(links, network_name, link_type, A, B, network_mapper)   
-    else:
-        #need to create new node id's
-        links = create_node_ids(links, network_name, link_type, network_mapper)
+#     #figure out where network mapper needs to be added
+#     if A is not None and B is not None:
+#     	#first rename the nodes and column names
+#         links = rename_refcol(links, network_name, A, B, network_mapper)   
+#     else:
+#         #need to create new node id's
+#         links = create_node_ids(links, network_name, network_mapper)
     
-    #create nodes
-    nodes = make_nodes(links, network_name, link_type, studyarea_name)
+#     #create nodes
+#     nodes = make_nodes(links, network_name, , studyarea_name)
     
-    #remove tuple
-    links = links.drop(columns=['start_node','end_node'])
+#     #remove tuple
+#     links = links.drop(columns=['start_node','end_node'])
     
-    return nodes, links
+#     return nodes, links
 
 
 # Extract Start and End Points Code from a LineString as tuples
 def start_node(row, geom):
-   return (row[geom].coords.xy[0][0], row[geom].coords.xy[1][0]) #basically look at x and then y coord, use apply to do this for every row of a dataframe
+   return (round(row[geom].coords.xy[0][0],5), round(row[geom].coords.xy[1][0],5)) #basically look at x and then y coord, use apply to do this for every row of a dataframe
 
 def end_node(row, geom):
-   return (row[geom].coords.xy[0][-1], row[geom].coords.xy[1][-1])
+   return (round(row[geom].coords.xy[0][-1],5), round(row[geom].coords.xy[1][-1],5))
 
-
-def create_node_ids(links, network_name, link_type, network_mapper):
+def create_node_ids(links, network_name, network_mapper):
     #need to create new nodes IDs for OSM and TIGER networks
     #extract nodes, find unique nodes, number sequentially, match ids back to links start end nodes
+    
+    #turn to unprojected and then round
+    orig_crs = links.crs
+    links = links.to_crs("epsg:4326")
     
     #add start and end coordinates to each line so we can match them
     links['start_node'] = links.apply(start_node, geom= links.geometry.name, axis=1)
@@ -73,6 +76,9 @@ def create_node_ids(links, network_name, link_type, network_mapper):
     #extract only the ID and coords column for joining
     nodes = nodes[[f'{network_name}_ID',f'{network_name}_coords']]
     
+    #turn nodes into gdf
+    nodes = gpd.GeoDataframe(nodes,geometry=f'{network_name}_coords',crs="epsg:4326").to_crs(orig_crs)
+    
     #perform join back to original dataframe
     #rename id to be A, rename coords to match start_node
     joining = nodes.rename(columns={f'{network_name}_ID':f'{network_name}_A',f'{network_name}_coords':'start_node'})
@@ -89,10 +95,10 @@ def create_node_ids(links, network_name, link_type, network_mapper):
     #create an A_B column
     links[f'{network_name}_A_B'] = links[f'{network_name}_A'] + '_' + links[f'{network_name}_B']
 
-    return links
+    return links, nodes
 
 #%% rename node ID's function
-def rename_nodes(df, network_name, link_type, A, B, network_mapper):  
+def rename_refcol(df, network_name, A, B, network_mapper):  
     #renames node ID column name to network name _ A/_B
     df = df.rename(columns={A:f'{network_name}_A',B:f'{network_name}_B'})
 
@@ -103,14 +109,25 @@ def rename_nodes(df, network_name, link_type, A, B, network_mapper):
     df[f'{network_name}_A_B'] = df[f'{network_name}_A'] + '_' + df[f'{network_name}_B']
     return df
 
+def rename_nodes(df, network_name, node_id, network_mapper):  
+    #renames node ID column name to network name _ A/_B
+    df = df.rename(columns={node_id:f'{network_name}_ID'})
+
+    #adds numbers to the beginning from network mapper
+    df[f'{network_name}_ID'] = network_mapper[network_name] + network_mapper['original'] + df[f'{network_name}_ID'].astype(str)
+
+    return df
 
 #%% Create node layer from lines
 #do this from the links to make sure that all nodes are included even if they would have been clipped
 #by the study area  
-def make_nodes(df, network_name, link_type, studyarea_name): 
+def make_nodes(df, network_name): 
+
+    #turn to unprojected and then round
+    orig_crs = df.crs
+    df = df.to_crs("epsg:4326")
 
     #extract start and end node, eliminate duplicates, turn into points    
-
     #add start and end coordinates to each line
     df['start_node'] = df.apply(start_node, geom= df.geometry.name, axis=1)
     df['end_node'] = df.apply(end_node, geom= df.geometry.name, axis=1)
@@ -132,6 +149,15 @@ def make_nodes(df, network_name, link_type, studyarea_name):
     nodes[f'{network_name}_coords'] = nodes.apply(lambda row: Point([row[f'{network_name}_coords']]), axis=1)
     
     #convert to GeoDataFrame and set geo and CRS
-    nodes = gpd.GeoDataFrame(nodes).set_geometry(f'{network_name}_coords').set_crs(epsg=2240)
+    nodes = gpd.GeoDataFrame(nodes).set_geometry(f'{network_name}_coords').set_crs("epsg:4326").to_crs(orig_crs)
     
     return nodes
+
+#%% filter nodes
+
+def filter_nodes(links,nodes,network_name):
+    #remove nodes that aren't in filtered links
+    nodes_in = links[f'{network_name}_A'].append(links[f'{network_name}_B']).unique()
+    nodes_filt = nodes[nodes[f'{network_name}_ID'].isin(nodes_in)]
+    return nodes_filt
+

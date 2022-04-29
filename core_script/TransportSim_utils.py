@@ -17,7 +17,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
-def initialize_abm15_links(grid_size=10000.0):  # needed only when updating the abm15 network
+def initialize_bikewaysim_links(grid_size=10000.0):  # needed only when updating the abm15 network
     """
     Import shape-file to GeoDataFrame, convert the format based on our needs.
     (Combining all useful information from 2 .shp file to one file)
@@ -27,28 +27,16 @@ def initialize_abm15_links(grid_size=10000.0):  # needed only when updating the 
 
     :return: GeoDataFrame of network link information, along with its end node information.
     """
-    # edit file directory
+    # edit file directory (figure out how to accept different spatial data types)
     file_dir = os.environ['bws_NETWORK']
     file_name_nodes = os.path.join('nodes', 'nodes.geojson')
     file_name_links = os.path.join('links', 'links.geojson')
 
+    #read in links
     df_nodes_raw = gpd.read_file(os.path.join(file_dir, file_name_nodes))
     df_links_raw = gpd.read_file(os.path.join(file_dir, file_name_links))
+    
     df_nodes = df_nodes_raw[['N', 'X', 'Y', 'lat', 'lon']]
-    #df_links_raw = df_links_raw[df_links_raw['FACTYPE'] > 0][df_links_raw['FACTYPE'] < 50]
-    #if 'SPEEDLIMIT' in df_links_raw.columns.tolist():
-     #   spd = 'SPEEDLIMIT'
-    #else:
-        #spd = 'SPEED_LIMI'
-
-    #if 'A_B' not in df_links_raw.columns.tolist():
-    #    df_links_raw['A_B'] = df_links_raw.apply(lambda x: str(int(x['A'])) + '_' + str(int(x['B'])), axis=1)
-
-    #mapper = {0: 35, 3: 65, 4: 65, 7: 35, 10: 35, 11: 70, 14: 35}  # edited hl 04092019
-    #df_links_raw['tmp'] = df_links_raw['FACTYPE'].map(mapper)
-    #df_links_raw['tmp'] = df_links_raw['tmp'].fillna(35)
-    #df_links_raw.loc[df_links_raw[spd] == 0, spd] = df_links_raw.loc[df_links_raw[spd] == 0, 'tmp']
-    #df_links = df_links_raw[['A', 'B', 'A_B', 'geometry', spd, 'distance', 'name']]
 
     df_links = df_links_raw[['A','B','A_B','distance','name','geometry']]
     df_links = df_links.merge(df_nodes.rename(columns={'N': 'A', 'X': 'Ax', 'Y': 'Ay', 'lat': 'A_lat', 'lon': 'A_lon'}),
@@ -65,90 +53,15 @@ def initialize_abm15_links(grid_size=10000.0):  # needed only when updating the 
     df_links = abm15_assignGrid(df_links)
     df_links = gpd.GeoDataFrame(df_links, geometry=df_links['geometry'], crs=df_links.crs)
     df_links.to_file(os.path.join(os.environ['PROJ_LIB'], 'build_graph',
-                                  'data_node_link', 'abm15_links.shp'))
-    return df_links
-
-
-# init SidewalkSim links
-def initialize_sws_links(grid_size=10000.0):
-    """
-    Similar to initialize_abm15_links formula, but prepare network for SidewalkSim.
-
-    Add node information to link files.
-
-    :return: GeoDataFrame of network link information, along with its end node information.
-    """
-    # step 1. import files
-    file_dir = os.path.join(os.environ['PROJ_LIB'], 'sidewalk_raw_files')
-
-    file_name_nodes = os.path.join(file_dir, 'sidewalkNodes.shp')
-    file_name_sw = os.path.join(file_dir, 'sidewalks.shp')
-    file_name_cw = os.path.join(file_dir, 'crosswalks.shp')
-
-    df_nodes = gpd.read_file(file_name_nodes)
-    df_links_sw = gpd.read_file(file_name_sw)
-    df_links_cw = gpd.read_file(file_name_cw)
-
-    # step 2. add geometry columns for node file
-    df_nodes['X'] = df_nodes.geometry.x
-    df_nodes['Y'] = df_nodes.geometry.y
-    df_nodes = df_nodes.to_crs(epsg=4326)
-    df_nodes['lon'] = df_nodes.geometry.x
-    df_nodes['lat'] = df_nodes.geometry.y
-    df_nodes = df_nodes[['sid', 'X', 'Y', 'lon', 'lat']]
-
-    # step 3. merge two table into one by appending
-    df_links_sw['type'] = 'sidewalk'
-    df_links_cw['type'] = 'crosswalk'
-    df_links = pd.concat([df_links_sw, df_links_cw])
-    df_links = df_links.rename(columns={'sid1': 'A', 'sid2': 'B'})
-
-    # step 4. create reversed links with reversed geometries
-    df_links1 = df_links.copy()
-
-    def row_reverse_geom(row):
-        reversed_lst = list(row.geometry.coords)[::-1]
-        return LineString(reversed_lst)
-
-    df_links1.geometry = df_links1.apply(row_reverse_geom, axis=1)
-    df_links1 = df_links1.rename(columns={'A': 'B', 'B': 'A'})  # switch A, B columns
-    df_links = df_links.append(df_links1)  # append df_links1 to df_links
-
-    # step 5. merge node info to link file
-    df_links = df_links.merge(
-        df_nodes.rename(columns={'sid': 'A', 'X': 'Ax', 'Y': 'Ay', 'lat': 'A_lat', 'lon': 'A_lon'}),
-        how='left', on='A')
-    df_links = df_links.merge(
-        df_nodes.rename(columns={'sid': 'B', 'X': 'Bx', 'Y': 'By', 'lat': 'B_lat', 'lon': 'B_lon'}),
-        how='left', on='B')
-
-    # step 6. add grid info for efficiency
-    def abm15_assignGrid(df_links):
-        for col in ['minx', 'miny', 'maxx', 'maxy']:
-            df_links[col + '_sq'] = round(df_links['geometry'].bounds[col] / grid_size, 0)
-        # df_links['dist']=df_links['geometry'].length
-        return df_links
-
-    df_links = abm15_assignGrid(df_links)
-    df_links = gpd.GeoDataFrame(df_links, geometry=df_links['geometry'], crs=df_links.crs)
-    df_links['InterID_t'] = df_links['InterID_t'].fillna(-1)
-
-    # step 7. get distance for every link; create name id as 'sid1_sid2'
-    # (no direction contained sid1 is just the smaller id)
-    df_links['distance'] = df_links['geometry'].length
-    df_links['A_B'] = df_links['A'].astype(str) + '_' + df_links['B'].astype(str)
-
-    # step 8. store computation results for reuse
-    df_links.to_file(os.path.join(os.environ['PROJ_LIB'], 'build_graph',
-                                  'data_node_link', 'SWS_links.shp'))
+                                  'data_node_link', 'links.shp'))
     return df_links
 
 
 def build_bike_network(df_links):
     """
-    Given original network like the DataFrame of abm15, create directed graph
+    Given original network create directed graph
         (bike network) for shortest paths searching using the package networkx.
-    :param df_links: The whole network, like the whole abm15 geo-dataframe
+    :param df_links: network links in geodataframe format
     :return: DGo: directed link graph.
     """
     # TODO: maybe prepare bike speed in previous step instead of this simplification
@@ -160,7 +73,7 @@ def build_bike_network(df_links):
     def compute_link_cost(x, method):
         
         #speed method, figure out how to be able to indicate two different methods
-        x[method] = x['distance'] #/ x['bk_speed']  # mile / mph = hour
+        x[method] = x['distance'] / x['bk_speed'] # mile / mph = hrs
         # could implement other methods based on needs (e.g., consider grades, etc.)
 
         return x[method]
@@ -172,36 +85,14 @@ def build_bike_network(df_links):
         # forward graph, time stored as minutes
         DGo.add_weighted_edges_from([(str(row2['A']), str(row2['B']), float(row2[col]) * 60.0)],
                                     weight='forward', dist=row2['distance'], name=row2['name'])
+        
+    #export the network graph
+    file_dir = os.environ['bws_NETWORK']
+    graph_network_fp = os.path.join('graph/bikewaysim.pkl')
+    nx.write_gpickle(DGo, path=os.path.join(file_dir, graph_network_fp))
+    #nx.write_weighted_edgelist(G=DGo,path=os.path.join(file_dir, graph_network_fp))
+    
     return DGo
-
-
-def build_walk_network(df_links):
-    """
-    Given original network like the DataFrame of abm15, create directed graph
-        (bike network) for shortest paths searching using the package networkx.
-    :param links_dict: containing two GeoDataFrame sidewalk links and crosswalk links.
-    :return: DGo: directed link graph.
-    """
-    df_links['walk_speed'] = 3  # 3 mph
-    # The measure to use as cost of traverse a link
-    col = 'time'  # can be expand to other measures, like considering grades, etc.
-
-    def compute_link_cost(x, method):
-        x[method] = (x['distance'] / 5280) / x['walk_speed']  # mile / mph = hour
-        # could implement other methods based on needs (e.g., consider grades, etc.)
-        return x[method]
-
-    df_links[col] = df_links.apply(compute_link_cost, axis=1, method=col)
-
-    DGo = nx.DiGraph()  # create directed graph
-    # create forward graph, time stored as minutes
-    for ind, row2 in df_links.iterrows():
-        DGo.add_weighted_edges_from([(str(row2['A']), str(row2['B']), float(row2[col]) * 60.0)],
-                                    weight='forward', dist=row2['distance'] / 5280, name=row2['InterID_t'])
-        DGo.add_weighted_edges_from([(str(row2['B']), str(row2['A']), float(row2[col]) * 60.0)],
-                                    weight='forward', dist=row2['distance'] / 5280, name=row2['InterID_t'])
-    return DGo
-
 
 # add (x,y) given (lon, lat)
 def add_xy(df, lat, lon, x, y, x_sq, y_sq, grid_size=10000.0):
@@ -709,3 +600,106 @@ def allRun(df_points, options, dict_settings):
     logs.to_csv(os.path.join(new_folder, 'logs_bike.csv'), index=False)
     log_sum = pd.DataFrame({'trip_id': trips, 'time': t})
     log_sum.to_csv(os.path.join(new_folder, 'log_sum_bike.csv'), index=False)
+    
+#%% sidewalksim code
+
+# # init SidewalkSim links
+# def initialize_sws_links(grid_size=10000.0):
+#     """
+#     Similar to initialize_abm15_links formula, but prepare network for SidewalkSim.
+
+#     Add node information to link files.
+
+#     :return: GeoDataFrame of network link information, along with its end node information.
+#     """
+#     # step 1. import files
+#     file_dir = os.path.join(os.environ['PROJ_LIB'], 'sidewalk_raw_files')
+
+#     file_name_nodes = os.path.join(file_dir, 'sidewalkNodes.shp')
+#     file_name_sw = os.path.join(file_dir, 'sidewalks.shp')
+#     file_name_cw = os.path.join(file_dir, 'crosswalks.shp')
+
+#     df_nodes = gpd.read_file(file_name_nodes)
+#     df_links_sw = gpd.read_file(file_name_sw)
+#     df_links_cw = gpd.read_file(file_name_cw)
+
+#     # step 2. add geometry columns for node file
+#     df_nodes['X'] = df_nodes.geometry.x
+#     df_nodes['Y'] = df_nodes.geometry.y
+#     df_nodes = df_nodes.to_crs(epsg=4326)
+#     df_nodes['lon'] = df_nodes.geometry.x
+#     df_nodes['lat'] = df_nodes.geometry.y
+#     df_nodes = df_nodes[['sid', 'X', 'Y', 'lon', 'lat']]
+
+#     # step 3. merge two table into one by appending
+#     df_links_sw['type'] = 'sidewalk'
+#     df_links_cw['type'] = 'crosswalk'
+#     df_links = pd.concat([df_links_sw, df_links_cw])
+#     df_links = df_links.rename(columns={'sid1': 'A', 'sid2': 'B'})
+
+#     # step 4. create reversed links with reversed geometries
+#     df_links1 = df_links.copy()
+
+#     def row_reverse_geom(row):
+#         reversed_lst = list(row.geometry.coords)[::-1]
+#         return LineString(reversed_lst)
+
+#     df_links1.geometry = df_links1.apply(row_reverse_geom, axis=1)
+#     df_links1 = df_links1.rename(columns={'A': 'B', 'B': 'A'})  # switch A, B columns
+#     df_links = df_links.append(df_links1)  # append df_links1 to df_links
+
+#     # step 5. merge node info to link file
+#     df_links = df_links.merge(
+#         df_nodes.rename(columns={'sid': 'A', 'X': 'Ax', 'Y': 'Ay', 'lat': 'A_lat', 'lon': 'A_lon'}),
+#         how='left', on='A')
+#     df_links = df_links.merge(
+#         df_nodes.rename(columns={'sid': 'B', 'X': 'Bx', 'Y': 'By', 'lat': 'B_lat', 'lon': 'B_lon'}),
+#         how='left', on='B')
+
+#     # step 6. add grid info for efficiency
+#     def abm15_assignGrid(df_links):
+#         for col in ['minx', 'miny', 'maxx', 'maxy']:
+#             df_links[col + '_sq'] = round(df_links['geometry'].bounds[col] / grid_size, 0)
+#         # df_links['dist']=df_links['geometry'].length
+#         return df_links
+
+#     df_links = abm15_assignGrid(df_links)
+#     df_links = gpd.GeoDataFrame(df_links, geometry=df_links['geometry'], crs=df_links.crs)
+#     df_links['InterID_t'] = df_links['InterID_t'].fillna(-1)
+
+#     # step 7. get distance for every link; create name id as 'sid1_sid2'
+#     # (no direction contained sid1 is just the smaller id)
+#     df_links['distance'] = df_links['geometry'].length
+#     df_links['A_B'] = df_links['A'].astype(str) + '_' + df_links['B'].astype(str)
+
+#     # step 8. store computation results for reuse
+#     df_links.to_file(os.path.join(os.environ['PROJ_LIB'], 'build_graph',
+#                                   'data_node_link', 'SWS_links.shp'))
+#     return df_links
+
+# def build_walk_network(df_links):
+#     """
+#     Given original network like the DataFrame of abm15, create directed graph
+#         (bike network) for shortest paths searching using the package networkx.
+#     :param links_dict: containing two GeoDataFrame sidewalk links and crosswalk links.
+#     :return: DGo: directed link graph.
+#     """
+#     df_links['walk_speed'] = 3  # 3 mph
+#     # The measure to use as cost of traverse a link
+#     col = 'time'  # can be expand to other measures, like considering grades, etc.
+
+#     def compute_link_cost(x, method):
+#         x[method] = (x['distance'] / 5280) / x['walk_speed']  # mile / mph = hour
+#         # could implement other methods based on needs (e.g., consider grades, etc.)
+#         return x[method]
+
+#     df_links[col] = df_links.apply(compute_link_cost, axis=1, method=col)
+
+#     DGo = nx.DiGraph()  # create directed graph
+#     # create forward graph, time stored as minutes
+#     for ind, row2 in df_links.iterrows():
+#         DGo.add_weighted_edges_from([(str(row2['A']), str(row2['B']), float(row2[col]) * 60.0)],
+#                                     weight='forward', dist=row2['distance'] / 5280, name=row2['InterID_t'])
+#         DGo.add_weighted_edges_from([(str(row2['B']), str(row2['A']), float(row2[col]) * 60.0)],
+#                                     weight='forward', dist=row2['distance'] / 5280, name=row2['InterID_t'])
+#     return DGo

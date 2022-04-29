@@ -96,16 +96,16 @@ class BikewaySim(TravelSim):
         if self.network_prepared:
             print('** Load BikewaySim network computed before **')
             df_links = gpd.read(os.path.join(os.environ['PROJ_LIB'], 'trips_bws',
-                                             'data_node_link', 'abm15_links.shp'))
+                                             'data_node_link', 'links.shp'))
         else:
             print('** Initialize BikewaySim network **')
             # change to graph directory
             dir_path = os.path.join(self.proj_lib, 'build_graph')
             os.chdir(dir_path)
-            df_links = initialize_abm15_links()
+            df_links = initialize_bikewaysim_links()
             # save file to .gdb for reuse
             df_links.to_file(os.path.join(os.environ['PROJ_LIB'], 'trips_bws',
-                                          'data_node_link', 'abm15_links.shp'))
+                                          'data_node_link', 'links.shp'))
             # prepare graph
             dict_walk = {'DG': build_bike_network(df_links), 'links': df_links}
         return df_links, dict_walk
