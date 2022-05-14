@@ -9,23 +9,9 @@ Created on Thu Nov  4 14:56:07 2021
 import geopandas as gpd
 import pandas as pd
 import numpy as np
-import os
-import time
-pd.options.display.max_columns = None  # display all columns
-pd.options.display.max_rows = None  # display all columns
 from shapely import wkt
 from shapely.wkt import dumps
-from shapely.ops import transform
-from shapely.ops import split, snap
-from shapely.geometry import Point, LineString, Polygon, MultiPoint, MultiLineString, mapping
-import shapely
-import pyproj
 from itertools import compress
-import pickle
-from collections import Counter
-import math
-from pathlib import Path
-from node_ids import start_node, end_node
 
 
 def cleaning_process(links, nodes, name):
@@ -80,7 +66,7 @@ def match_nodes(base_nodes, base_name, join_nodes, join_name, tolerance_ft, prev
     #from each base node, find the nearest join node
     closest_nodes = ckdnearest(base_nodes, join_nodes)
 
-    #filter out matched nodes where the match is greater than specified amount aka tolerence, 26ft seemed good
+    #filter out matched nodes where the match is greater than specified amount aka tolerence, 25ft seemed good
     matched_nodes = closest_nodes[closest_nodes['dist'] <= tolerance_ft]
     
     #print out the initial number of matches

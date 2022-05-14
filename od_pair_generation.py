@@ -78,11 +78,19 @@ bikewaysim_studyarea = gpd.read_file(r'processed_shapefiles/study_areas/study_ar
 tazs = gpd.read_file(r'base_shapefiles/arc/Model_Traffic_Analysis_Zones_2020/Model_Traffic_Analysis_Zones_2020.shp',
                      mask=bikewaysim_studyarea)
 
+tazs.to_file('tu_delft/tazs.gpkg',driver='GPKG',layer='tazs')
+
 #get centroid
 tazs['geometry'] = tazs.geometry.centroid
 
+
 tazs['FID_1'] = tazs['FID_1'].astype(str)
 
+#export centroids
+tazs.to_file('tu_delft/tazs.gpkg',driver='GPKG',layer='centroids')
+
+
+#%%
 #create list of od pairs
 list_of_ids = tazs['FID_1'].tolist()
 

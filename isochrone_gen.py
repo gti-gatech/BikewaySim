@@ -117,9 +117,9 @@ def make_bikeshed(links,nodes,n,time_min, impedance_col,bk_speed_mph):
 #n = '307752789090'
 n = '3069322975'
 
-bikeshed, bikeshed_node = make_bikeshed(links,nodes,n,20,'distance',8)
-bikeshed_per, _ = make_bikeshed(links,nodes,n,20,'per_distance',8)
-bikeshed_lts, _ = make_bikeshed(links_lowstress,nodes,n,20,'distance',8)
+bikeshed, bikeshed_node = make_bikeshed(links,nodes,n,15,'distance',8)
+bikeshed_per, _ = make_bikeshed(links,nodes,n,15,'per_distance',8)
+bikeshed_lts, _ = make_bikeshed(links_lowstress,nodes,n,15,'distance',8)
 
 #%%
 
@@ -131,7 +131,11 @@ bikeshed_lts.length.sum()/5280 /2
 #export
 
 #%% isochrone/ego-graph
-fp = 'C:/Users/tpassmore6/Downloads/bikeshed.gpkg'
+import os
+from pathlib import Path
+
+user_directory = os.fspath(Path.home()) #get home directory and convert to path string
+fp = user_directory+r'\Documents\BikewaySimData\tu_delft\bikeshed.gpkg'
 
 bikeshed.to_file(fp,layer='bikeshed',driver='GPKG')
 bikeshed_node.to_file(fp,layer='node',driver='GPKG')
