@@ -19,7 +19,7 @@ def sum_all_networks(networks,studyarea_name):
         summary_table = run_sum_function(summary_table, studyarea_name, i)
     
     #export summary table
-    summary_table.to_csv(r"network_summary.csv")
+    summary_table.to_csv(r"network_summary.csv",index=False)
    
     print(summary_table)
 

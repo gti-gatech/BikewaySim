@@ -58,8 +58,8 @@ def import_study_area(studyareafp, studyarea_name, desired_crs):
     
     # calculate the area of the study area in square miles
     sqmi = round(float(gdf['geometry'].area / 5280**2),2) 
-    print(f"The area of the {studyarea_name} boundary is {sqmi} square miles.")
-    gdf.plot()
+    print(f"The area of the {studyarea_name} study area is {sqmi} square miles.")
+    gdf.plot(color='grey')
     
     return gdf
 

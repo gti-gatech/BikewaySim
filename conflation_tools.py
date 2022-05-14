@@ -2,7 +2,7 @@
 """
 Created on Thu Nov  4 14:56:07 2021
 
-@author: tpassmore6
+@author: tpassmore6 and ziyi
 """
 
 #%%
@@ -12,6 +12,7 @@ import numpy as np
 from shapely import wkt
 from shapely.wkt import dumps
 from itertools import compress
+from shapely.ops import LineString, Point, MultiPoint
 
 
 def cleaning_process(links, nodes, name):
@@ -30,7 +31,7 @@ def cleaning_process(links, nodes, name):
 
 
 
-# Match Points Function
+#%% Match Points Function
 
 #base function
 #https://gis.stackexchange.com/questions/222315/geopandas-find-nearest-point-in-other-dataframe
@@ -62,6 +63,11 @@ def ckdnearest(gdA, gdB, return_dist=True):
     return gdf
 
 def match_nodes(base_nodes, base_name, join_nodes, join_name, tolerance_ft, prev_matched_nodes = None, remove_duplicates = True, export_error_lines = False, export_unmatched = False):
+    
+    #if there are previous matched nodes, remove them from the base and join nodes
+    if prev_matched_nodes != None:
+        base_nodes = base_nodes[-base_nodes[f'{base_name}_ID'].isin(prev_matched_nodes[f'{base_name}_ID'])]
+        join_nodes = join_nodes[-join_nodes[f'{join_name}_ID'].isin(prev_matched_nodes[f'{join_name}_ID'])]
     
     #from each base node, find the nearest join node
     closest_nodes = ckdnearest(base_nodes, join_nodes)
@@ -132,7 +138,7 @@ def match_nodes(base_nodes, base_name, join_nodes, join_name, tolerance_ft, prev
     return matched_nodes, unmatched_base_nodes, unmatched_join_nodes
 
 
-# splitting base links by nearest joining nodes
+#%% splitting base links by nearest joining nodes
 
 #this function finds the nearest point on a base link from every join node
 #this interpolated point will then be used to split the base link
@@ -259,13 +265,13 @@ def add_new_links_nodes(base_links, base_nodes, new_links, new_nodes, base_name)
     
     return base_links, base_nodes
 
-def add_attributes(base_links, base_name, join_links, join_name):
+def add_attributes(base_links, base_name, join_links, join_name, buffer_ft):
      
     #give base_links a temp column so each row has unique identifyer
     base_links['temp_ID'] = np.arange(base_links.shape[0]).astype(str)
     
     #buffer base links by 30 ft (or whatever the projected coord unit is)
-    base_links['buffer_geo'] = base_links.buffer(30)
+    base_links['buffer_geo'] = base_links.buffer(buffer_ft)
     base_links = base_links.set_geometry('buffer_geo')
     
     #export buffer for examination
@@ -280,7 +286,8 @@ def add_attributes(base_links, base_name, join_links, join_name):
     #overlap length
     overlapping_links['overlap_length'] = overlapping_links.length 
     
-    #for each base link find join link with greatest percent overlap
+    
+    #for each base link find join link with greatest length overlap
     overlapping_links = overlapping_links.loc[overlapping_links.groupby('temp_ID')['overlap_length'].idxmax()]
     
     #merge the join_A_B column to base_links by temp ID
@@ -296,7 +303,6 @@ def add_attributes(base_links, base_name, join_links, join_name):
     base_links.to_file(rf'Processed_Shapefiles/conflation/add_attributes/{base_name}_joined.geojson', driver = 'GeoJSON')
 
     return base_links
-
 
 
 def start_node_geo(row, geom):
