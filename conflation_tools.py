@@ -22,6 +22,7 @@ def cleaning_process(links, nodes, name):
     
     #use mask to only keep neccessary columns
     links = links[mask]
+    nodes = nodes[[f'{name}_ID','geometry']]
     
     #rename geometry collumns
     links = links.rename(columns={'geometry':f'{name}_line_geo'}).set_geometry(f'{name}_line_geo')
@@ -65,7 +66,7 @@ def ckdnearest(gdA, gdB, return_dist=True):
 def match_nodes(base_nodes, base_name, join_nodes, join_name, tolerance_ft, prev_matched_nodes = None, remove_duplicates = True, export_error_lines = False, export_unmatched = False):
     
     #if there are previous matched nodes, remove them from the base and join nodes
-    if prev_matched_nodes != None:
+    if prev_matched_nodes is not None:
         base_nodes = base_nodes[-base_nodes[f'{base_name}_ID'].isin(prev_matched_nodes[f'{base_name}_ID'])]
         join_nodes = join_nodes[-join_nodes[f'{join_name}_ID'].isin(prev_matched_nodes[f'{join_name}_ID'])]
     
@@ -124,7 +125,7 @@ def match_nodes(base_nodes, base_name, join_nodes, join_name, tolerance_ft, prev
     unmatched_join_nodes = join_nodes[-join_nodes[f'{join_name}_ID'].isin(matched_nodes[f'{join_name}_ID'])]
     
     #if there was a previous match process, merge the old matching one with the new one
-    if prev_matched_nodes != None:
+    if prev_matched_nodes is not None:
         matched_nodes = prev_matched_nodes.append(matched_nodes)    
     
     if export_unmatched == True:
@@ -474,67 +475,24 @@ def add_reference_ids(links, nodes):
             
     return links
 
-
-#%% for testing move this to jupyter notebook after
-
-
-# #this is what you edit
-# base_name = "abm"
-# join_name = "here"
-
-# base_links = gpd.read_file(r"C:/Users/tpassmore6/Documents/GitHub/BikewaySimDev/processed_shapefiles/abm/abm_bikewaysim_road_links.geojson")
-# base_nodes = gpd.read_file(r"C:/Users/tpassmore6/Documents/GitHub/BikewaySimDev/processed_shapefiles/abm/abm_bikewaysim_road_nodes.geojson")
-# join_links = gpd.read_file(r"C:/Users/tpassmore6/Documents/GitHub/BikewaySimDev/processed_shapefiles/here/here_bikewaysim_road_links.geojson")
-# join_nodes = gpd.read_file(r"C:/Users/tpassmore6/Documents/GitHub/BikewaySimDev/processed_shapefiles/here/here_bikewaysim_road_nodes.geojson")
-
-# #%% conflation steps
-
-# #get rid of excess columns
-# base_links, base_nodes = cleaning_process(base_links,base_nodes,base_name)
-# join_links, join_nodes = cleaning_process(join_links,join_nodes,join_name)
-
-# #first match the nodes, can repeat this by adding in previously matched_nodes
-# tolerance_ft = 25
-# matched_nodes, unmatched_base_nodes, unmatched_join_nodes = match_nodes(base_nodes, base_name, join_nodes, join_name, tolerance_ft, prev_matched_nodes=None)
-
-# #join the matched nodes to the base nodes once done with matching
-# matched_nodes_final = pd.merge(base_nodes, matched_nodes, on = f'{base_name}_ID', how = "left")
-
-# #create new node and lines from the base links by splitting lines can repeat after the add_new_links_nodes function
-# tolerance_ft = 25
-# split_lines, split_nodes, unmatched_join_nodes = split_lines_create_points(unmatched_join_nodes, join_name, base_links, base_name, tolerance_ft, export = False)
-
-# #add new links and nodes to the base links and nodes created from split_lines_create_points function
-# new_links, new_nodes = add_new_links_nodes(base_links, matched_nodes_final, split_lines, split_nodes, base_name)
-
-# #match attribute information with greatest overlap from joining links
-# new_base_links_w_attr = add_attributes(new_links, base_name, join_links, join_name)
-
-
-# #add unrepresented features from joining by looking at the attributes added in prevoius step for links and the list of matched nodes
-# added_base_links, added_base_nodes = add_rest_of_features(new_base_links_w_attr,new_nodes,base_name,join_links,join_nodes,join_name)
-
-# #merge other conflated networks into this
-# #import a bike layer
-# bike_links = gpd.read_file(r'C:/Users/tpassmore6/Documents/GitHub/BikewaySimDev/processed_shapefiles/here/here_bikewaysim_bike_links.geojson')
-# bike_nodes = gpd.read_file(r'C:/Users/tpassmore6/Documents/GitHub/BikewaySimDev/processed_shapefiles/here/here_bikewaysim_bike_nodes.geojson')
-# bike_name = 'here'
-
-# #clean excess columns
-# bike_links, bike_nodes = cleaning_process(bike_links,bike_nodes,bike_name)
-
-# #merge diff netwrks
-# tolerance_ft = 25
-# merged_links, merged_nodes, connections = merge_diff_networks(added_base_links, added_base_nodes, 'road', bike_links, bike_nodes, 'bike', tolerance_ft)
-
-# # match reference IDs based on all the id in the nodes
-# refid_base_links = add_reference_ids(merged_links, merged_nodes)
-
-# #export
-# refid_base_links
-# merged_nodes
-
-
-
-
+def fin_subnetwork(final_links,final_nodes,base_name,join_name):
+    comb = base_name + join_name
+    
+    final_links.rename(columns={f'{base_name}_line_geo':f'{comb}_line_geo'},inplace=True)
+    final_links.set_geometry(f'{comb}_line_geo',inplace=True)
+    final_links[f'{comb}_A_B'] = np.nan
+    final_links[f'{comb}_A_B'] = final_links[f'{comb}_A_B'].fillna(final_links[f'{base_name}_A_B'])
+    final_links[f'{comb}_A_B'] = final_links[f'{comb}_A_B'].fillna(final_links[f'{join_name}_A_B'])
+    
+    final_nodes.rename(columns={f'{base_name}_point_geo':f'{comb}_point_geo'},inplace=True)
+    final_nodes.set_geometry(f'{comb}_point_geo',inplace=True)
+    final_nodes[f'{comb}_ID'] = np.nan
+    final_nodes[f'{comb}_ID'] = final_nodes[f'{comb}_ID'].fillna(final_nodes[f'{base_name}_ID'])
+    final_nodes[f'{comb}_ID'] = final_nodes[f'{comb}_ID'].fillna(final_nodes[f'{join_name}_ID'])
+    
+    final_links = final_links.reset_index(drop=True)
+    final_nodes = final_nodes.reset_index(drop=True)
+    
+    return final_links, final_nodes
+    
 

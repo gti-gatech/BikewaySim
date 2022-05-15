@@ -7,13 +7,13 @@ Created on Wed Jun  9 09:15:35 2021
 
 import geopandas as gpd
 import pandas as pd
-import time
 import os
+
 
 def sum_all_networks(networks,studyarea_name):
     
     #summary table
-    summary_table = pd.DataFrame(columns=['network name','link_type','num_links','num_nodes','tot_link_length','avg_link_length','avg_'])
+    summary_table = pd.DataFrame(columns=['network name','link_type','num_links','num_nodes','tot_link_length','avg_link_length'])
     
     for i in networks:
         summary_table = run_sum_function(summary_table, studyarea_name, i)
@@ -67,12 +67,25 @@ def summurize_network(summary_table, links, nodes, network_name, studyarea_name,
     avg_len = round(links.geometry.length.mean(),1)
     
     #average number of connecting nodes
-    avg_connect_nodes = round(nodes[f'{network_name}_num_links'].mean(),2)
+    #avg_connect_nodes = round(nodes[f'{network_name}_num_links'].mean(),2)
     
     #add to summary table
-    summary_table.loc[len(summary_table.index)] = [network_name, link_type, num_links, num_nodes, sum_miles, avg_len, avg_connect_nodes]
+    summary_table.loc[len(summary_table.index)] = [network_name, link_type, num_links, num_nodes, sum_miles, avg_len]
     
     #Print Stats
     #print(f'There are {num_links} links, {num_nodes} nodes, {sum_miles} miles of links, and average link length of {avg_len} miles in {network_name}')
     
     return summary_table
+
+# import os
+
+# #make directory/pathing more intuitive later
+# file_dir = r"C:\Users\tpassmore6\Documents\BikewaySimData" #directory of bikewaysim network processing code
+
+# #change this to where you stored this folder
+# os.chdir(file_dir)
+
+# networks = ['abm','here','osm']
+# studyarea_name = 'bikewaysim'
+
+# sum_all_networks(networks, studyarea_name)

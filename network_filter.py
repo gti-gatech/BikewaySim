@@ -115,7 +115,7 @@ def filter_to_general(studyarea, studyarea_name, networkfp,
     #nodes
     #scenario 1, links have reference ids and there is a seperate nodes layer
     #so we can just import the nodes
-    if (nodesfp != None) & ((A != None) & (B != None)):   
+    if (nodesfp is not None) & ((A is not None) & (B is not None)):   
         #import nodes
         if nodes_layer == None:
             nodes = gpd.read_file(nodesfp).to_crs(desired_crs)
@@ -131,7 +131,7 @@ def filter_to_general(studyarea, studyarea_name, networkfp,
     
     #scenario 2, links have reference ids but there is no nodes layer (HERE)
     #need to make new nodes
-    elif (A != None) & (B != None):
+    elif (A is not None) & (B is not None):
         #rename reference id columns
         links = rename_refcol(links, network_name, A, B, network_mapper)
         
@@ -140,7 +140,7 @@ def filter_to_general(studyarea, studyarea_name, networkfp,
     
     #scenario 3, links don't have reference ids but there is a nodes layer
     # need to use nodes layer to create reference id columns
-    elif nodesfp != None:
+    elif nodesfp is not None:
         #do this later
         print("not implemented yet")    
         
@@ -197,7 +197,7 @@ def filter_to_roads(links, nodes, network_name, studyarea_name):
         #create nodes
         road_nodes = filter_nodes(road_links, nodes, network_name)
         #export nodes
-        nodes.to_file(rf"processed_shapefiles/{network_name}/{network_name}_{studyarea_name}_road_nodes.geojson", driver = 'GeoJSON')
+        road_nodes.to_file(rf"processed_shapefiles/{network_name}/{network_name}_{studyarea_name}_road_nodes.geojson", driver = 'GeoJSON')
 
 #Filtering Network to Bike Links
 
