@@ -13,37 +13,122 @@ import os
 from pathlib import Path
 import seaborn as sns
 import matplotlib.pyplot as plt
+import numpy as np
 
+
+#%% map routes function
+
+def map_trips(links, od_pairs, paths, desired_crs):
+    
+    #add geo to paths
+    paths = pd.merge(paths, links, on=['A','B'], how='left')
+    
+    #attach od coords
+    #convert o and d matches to lines
+    od_pairs['ori_geo'] = gpd.points_from_xy(od_pairs['ori_lon'], od_pairs['ori_lat'], crs ='epsg:4326').to_crs(desired_crs)
+    od_pairs['dest_geo'] = gpd.points_from_xy(od_pairs['dest_lon'], od_pairs['dest_lat'], crs ='epsg:4326').to_crs(desired_crs)
+    od_pairs['ori_match_geo'] = gpd.points_from_xy(od_pairs['ox'], od_pairs['oy'], crs =desired_crs)
+    od_pairs['dest_match_geo'] = gpd.points_from_xy(od_pairs['dx'], od_pairs['dy'], crs =desired_crs)
+
+    #lines
+    od_pairs['ori_line'] = [LineString(points) for points in zip(od_pairs.ori_geo,od_pairs.ori_match_geo)]
+    od_pairs['dest_line'] = [LineString(points) for points in zip(od_pairs.dest_geo,od_pairs.dest_match_geo)]
+
+    #filter
+    origs = od_pairs[['trip_id','ori_line']]
+    dests = od_pairs[['trip_id','dest_line']]
+
+    #add geo for ori/dest rows
+    origs['A'] = 'origin'
+    dests['B'] = 'destination'
+
+    #merge to add lines
+    paths = pd.merge(paths, origs, on=['A','trip_id'], how = 'left')
+    paths = pd.merge(paths, dests, on=['B','trip_id'], how = 'left')
+    
+    #merge geo columns
+    paths = pd.concat([paths[['A','B','sequence','trip_id','time']], 
+            paths["geometry"].combine_first(paths["ori_line"]).combine_first(paths["dest_line"])], 
+            axis=1)
+
+    #turn to gdf
+    paths_geo = gpd.GeoDataFrame(paths, geometry='geometry', crs=desired_crs)
+
+    #create multilinestring for to show each trip
+    trip_lines = paths_geo.dissolve(by='trip_id',aggfunc='sum').reset_index()
+
+    return trip_lines
+
+def betweeness_centrality(links, paths, desired_crs):
+    #take AB columns
+    ab_cols = paths[['A','B']]
+
+    #drop origin/dest col
+    ab_cols = ab_cols[-((ab_cols['A']=='origin') | (ab_cols['B']=='destination'))]
+
+    #count occurances
+    ab_cols['trips'] = 1
+    ab_cols = ab_cols.groupby(['A','B']).sum().reset_index()
+
+    #merge with links
+    links_w_trips = pd.merge(links,ab_cols,on=['A','B'],how='left')   
+    
+    #combine reverse links    
+    links_w_trips[['A','B']] = pd.DataFrame(np.sort(links_w_trips[['A','B']], axis=1), columns=["A","B"])
+    
+    #group it
+    links_w_trips = links_w_trips.dissolve(['A','B'], aggfunc='sum').reset_index()
+    
+    #clean
+    links_w_trips = links_w_trips[['A','B',f'{sc}_trips']]
+
+    return links_w_trips
+
+
+#%% run code
 #make directory/pathing more intuitive later
 user_directory = os.fspath(Path.home()) #get home directory and convert to path string
-file_directory = "\Documents\GitHub\BikewaySim_archive\TransportSim" #directory of bikewaysim network processing code
+file_directory = "/Documents/BikewaySimData" #directory of bikewaysim outputs
 os.chdir(user_directory+file_directory)
 
-#%% filepaths
-bikewaysim_fp_nodes = 'bikewaysim_network/2020 nodes with latlon/2020_nodes_latlon.geojson'
-bikewaysim_fp_links = 'bikewaysim_network/2020 links/2020_links.geojson'
-bikewaysim_date_name = '062221_072540' #for bikewaysim
-bikewaysim_pref_date_name = '062421_092503' #for bikewaysim but with preferences, instead of distances
+#scenarios
+scenarios = ['dist','per_dist','improvement']
 
-abm_fp_nodes = 'abm/2020 nodes with latlon/2020_nodes_latlon.geojson'
-abm_fp_links = 'abm/2020 links/2020_links.geojson'
-abm_date_name = '062121_200336' # for abm
+#od pairs with closest network node
+od_pairs = pd.read_csv(r'bikewaysim_outputs/samples_out/all_tazs_node.csv')
 
-#bikewaysim_trips = gpd.read_file(rf"Analysis/{bikewaysim_date_name}_trips.geojson")
-bikewaysim_trips_on_links = gpd.read_file(rf"Analysis/{bikewaysim_date_name}_trips_on_links.geojson")
+trip_lines = {}
+links_w_trips = {}
 
-#bikewaysim_pref_trips = gpd.read_file(rf"Analysis/{bikewaysim_pref_date_name}_trips.geojson")
-#bikewaysim_pref_trips_on_links = gpd.read_file(rf"Analysis/{bikewaysim_pref_date_name}_trips_on_links.geojson")
+for scenario in scenarios:
+    
+    #networkfiles
+    nodes = gpd.read_file(rf'processed_shapefiles/prepared_network/{scenario}/nodes/nodes.geojson')
+    links = gpd.read_file(rf'processed_shapefiles/prepared_network/{scenario}/links/links.geojson')
 
-#abm_trips = gpd.read_file(rf"Analysis/{abm_date_name}_trips.geojson")
-abm_trips_on_links = gpd.read_file(rf"Analysis/{abm_date_name}_trips_on_links.geojson")
+    #bikewaysim outputs
+    paths = pd.read_csv(rf'bikewaysim_outputs/results/{scenario}/paths_bike.csv')
 
-#%%
+    #run map trips function to get trip lines
+    trip_lines[scenario] = map_trips(links, od_pairs, paths, 'epsg:2240')
 
-#if contains 11 at begining then change to 10
-bikewaysim_trips_on_links.loc[bikewaysim_trips_on_links['A'].str[0:2] == '11','A_new'] = '10' + bikewaysim_trips_on_links['A'].str[2:]
-bikewaysim_trips_on_links.loc[bikewaysim_trips_on_links['B'].str[0:2] == '11','B_new'] = '10' + bikewaysim_trips_on_links['B'].str[2:]
-bikewaysim_trips_on_links['A_B_new'] = bikewaysim_trips_on_links['A_new'] + '_' + bikewaysim_trips_on_links['B_new']
+    #get betweenness centrality
+    links_w_trips[scenario] = betweeness_centrality(links, paths, 'epsg:2240')
+
+    #flatten dicts
+    
+
+#%% find differences btw per_dist and improvement
+
+#time diff
+time_diff = trip_lines['improvement']['time'] - trip_lines['per_dist']['time']
+
+#betweeness centrality difference
+links_w_trips['dist']['count'] - links_w_trips['per_dist']['count']
+links_w_trips['per_dist']['count'] - links_w_trips['improvement']['count']
+
+
+#%% trip difference
 
 
 #merge trips on links by a_b
@@ -76,20 +161,6 @@ abm_trips['trip_length'] = abm_trips.length / 5280
 bikewaysim_trips_on_links['trip_miles'] = bikewaysim_trips_on_links['trips'] * bikewaysim_trips_on_links.length
 bikewaysim_pref_trips_on_links['trip_miles'] = bikewaysim_pref_trips_on_links['trips'] * bikewaysim_pref_trips_on_links.length
 abm_trips_on_links['trip_miles'] = abm_trips_on_links['trips'] * abm_trips_on_links.length
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -143,54 +214,3 @@ print(test['trip_miles'].sum())
 result = round((test['trip_miles'].sum()) / (bikewaysim_pref_trips_on_links['trip_miles'].sum()),2)
 print(result)
 
-#%% most travelled links
-
-ab
-
-
-
-#%%summary function
-
- 
-    #total trip miles
-    print(gdf['trip_miles'].sum())
-    
-    #describe basic trip characteristics
-    print(gdf['length'].describe())
-    
-    #plot distribution with trips in 0.25 mile bins
-    #sns.displot(gdf, x="length", binwidth=0.25)
-    
-    return gdf, gdf_on_links
-
-
-
-#%% Summary stats
-
-
-
-
-
-
-
-#%% Comparing distributions
-combined_trips = pd.merge(bikewaysim_trips, abm_trips, how = 'inner', on='trip_id', suffixes=('_bikewaysim','_abm'))
-
-#check for any na values
-sns.set(style="darkgrid")
-
-sns.histplot(combined_trips, x="length_abm", label="ABM", binwidth=0.25, color = "red")
-sns.histplot(combined_trips, x="length_bikewaysim", label="BikewaySim", binwidth=0.25, color = "skyblue")
-
-plt.legend()
-plt.show()
-
-#%% analysis
-
-de
-
-
-bikewaysim_pref_trips_analysis = gpd.GeoDataFrame(bikewaysim_pref_trips)
-bikewaysim_pref_trips_analysis['real_length'] = bikewaysim_pref_trips_analysis.length / 5280
-
-print(bikewaysim_pref_trips_analysis['real_length'].describe())
