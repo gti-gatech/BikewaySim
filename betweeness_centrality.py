@@ -11,7 +11,6 @@ import geopandas as gpd
 from shapely.geometry import Point, LineString, shape
 import os
 from pathlib import Path
-import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -80,7 +79,7 @@ def betweeness_centrality(links, paths, desired_crs):
     links_w_trips = links_w_trips.dissolve(['A','B'], aggfunc='sum').reset_index()
     
     #clean
-    links_w_trips = links_w_trips[['A','B',f'{sc}_trips']]
+    links_w_trips = links_w_trips[['A','B','trips']]
 
     return links_w_trips
 
@@ -88,7 +87,7 @@ def betweeness_centrality(links, paths, desired_crs):
 #%% run code
 #make directory/pathing more intuitive later
 user_directory = os.fspath(Path.home()) #get home directory and convert to path string
-file_directory = "/Documents/BikewaySimData" #directory of bikewaysim outputs
+file_directory = r"/Documents/BikewaySimData" #directory of bikewaysim outputs
 os.chdir(user_directory+file_directory)
 
 #scenarios
@@ -97,8 +96,12 @@ scenarios = ['dist','per_dist','improvement']
 #od pairs with closest network node
 od_pairs = pd.read_csv(r'bikewaysim_outputs/samples_out/all_tazs_node.csv')
 
-trip_lines = {}
-links_w_trips = {}
+#just od column
+impedance = od_pairs['trip_id']
+
+#get link ab column
+centrality = gpd.read_file(r'processed_shapefiles/prepared_network/dist/links/links.geojson')[['A','B','geometry']].drop_duplicates()
+links_dist = centrality
 
 for scenario in scenarios:
     
@@ -110,25 +113,59 @@ for scenario in scenarios:
     paths = pd.read_csv(rf'bikewaysim_outputs/results/{scenario}/paths_bike.csv')
 
     #run map trips function to get trip lines
-    trip_lines[scenario] = map_trips(links, od_pairs, paths, 'epsg:2240')
+    trip_lines = map_trips(links, od_pairs, paths, 'epsg:2240')
 
     #get betweenness centrality
-    links_w_trips[scenario] = betweeness_centrality(links, paths, 'epsg:2240')
+    links_w_trips = betweeness_centrality(links, paths, 'epsg:2240')
+    
+    #export
 
-    #flatten dicts
+    #merge with dfs for quick analysis
+    impedance = pd.merge(impedance,trip_lines[['trip_id','time']],on=['trip_id']).rename(columns={'time':f'{scenario}_time'})
+    centrality = pd.merge(centrality, links_w_trips[['A','B','trips']],on=['A','B']).rename(columns={'trips':f'{scenario}_trips'})
+    links_dist = pd.merge(links_dist, links[['A','B','distance']],on=['A','B']).rename(columns={'distance':f'{scenario}'})
     
 
 #%% find differences btw per_dist and improvement
 
-#time diff
-time_diff = trip_lines['improvement']['time'] - trip_lines['per_dist']['time']
 
-#betweeness centrality difference
-links_w_trips['dist']['count'] - links_w_trips['per_dist']['count']
-links_w_trips['per_dist']['count'] - links_w_trips['improvement']['count']
+impedance['diff'] = impedance['per_dist_time'] - impedance['improvement_time']
 
+#find negative trips
+negative = impedance[impedance['diff']<0]
+
+#get od columns
+negative = pd.merge(negative,od_pairs,on='trip_id')[['ori_id','ori_lat','ori_lon','dest_id','dest_lat','dest_lon']]
+
+
+origs = negative[['ori_id','ori_lat','ori_lon']].rename(columns={'ori_id':'id','ori_lat':'lat','ori_lon':'lon'})
+dests = negative[['dest_id','dest_lat','dest_lon']].rename(columns={'dest_id':'id','dest_lat':'lat','dest_lon':'lon'})
+comb = origs.append(dests)
+geo = comb.drop_duplicates()
+comb['duplicated'] = comb.id.duplicated()
+comb = comb.groupby('id')['duplicated'].sum().reset_index().merge(geo,on='id')
+comb['geometry'] = gpd.points_from_xy(comb['lon'], comb['lat'], crs="epsg:4326")
+comb = gpd.GeoDataFrame(comb,geometry='geometry')
+comb.plot('duplicated')
+
+#get geo
+
+
+#export
 
 #%% trip difference
+
+links_dist['diff_dist'] = links_dist['per_dist'] - links_dist['improvement']
+#count neg
+links_dist.to_file('export_check.geojson')
+     
+     
+     #(diff_dist<0).sum()
+
+#export for checking
+
+
+#%%
 
 
 #merge trips on links by a_b

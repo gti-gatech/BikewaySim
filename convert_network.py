@@ -8,7 +8,13 @@ Created on Thu Apr 29 15:34:15 2021
 import geopandas as gpd
 import pandas as pd
 import numpy as np
+import os
+from pathlib import Path
 
+#make directory/pathing more intuitive later
+user_directory = os.fspath(Path.home()) #get home directory and convert to path string
+file_directory = r"/Documents/BikewaySimData" #directory of bikewaysim outputs
+os.chdir(user_directory+file_directory)
 
 #%% Add back in attributes
 
@@ -70,7 +76,7 @@ import numpy as np
 
 
 
-def osm_to_bws(linksfp, nodesfp, oneway_col):
+def osm_to_bws(linksfp, nodesfp, oneway_col, improvement = None):
     #read in data
     links = gpd.read_file(linksfp)
     nodes = gpd.read_file(nodesfp)
@@ -83,16 +89,17 @@ def osm_to_bws(linksfp, nodesfp, oneway_col):
     #filter links
     links = create_bws_links(links)
 
+    #find bike lanes
+    links = bike_lane_presence(links)    
 
+    #calculate distances
+    links = get_link_costs_osm(links,improvement)
+    
     #create reverse links for two way streets
     links = create_reverse_links(links, oneway_col)
     
-    #export
-    nodes.to_file(r'C:/Users/tpassmore6/Documents/BikewaySimData/processed_shapefiles\prepared_network\nodes\nodes.geojson',driver='GeoJSON')
-    nodes = nodes.drop(columns=['geometry'])
-    nodes.to_csv(r'C:/Users/tpassmore6/Documents/BikewaySimData/processed_shapefiles\prepared_network\nodes\nodes.csv')
+    return links, nodes
     
-    links.drop(columns=['oneway']).to_file(r'C:/Users/tpassmore6/Documents/BikewaySimData/processed_shapefiles\prepared_network\links\links.geojson',driver='GeoJSON')
     
 def create_bws_links(links):
     #rename ID column
@@ -109,12 +116,6 @@ def create_bws_links(links):
     links = links.rename(columns={a_cols[0]:'A'})
     links = links.rename(columns={b_cols[0]:'B'})
     links = links.rename(columns={a_b_cols[0]:'A_B'})
-    
-    #distance 
-    links['distance'] = links.length / 5280
-    
-    #filter to needed columns
-    #links = links[['A','B','A_B','distance','name','geometry','oneway']]
     
     return links
 
@@ -163,20 +164,80 @@ def create_reverse_links(links,oneway_col):
 
     return links
 
-linksfp = r'C:/Users/tpassmore6/Documents/BikewaySimData/processed_shapefiles/osm/osm_bikewaysim_base_links.geojson'
-nodesfp = r'C:/Users/tpassmore6/Documents/BikewaySimData/processed_shapefiles/osm/osm_bikewaysim_base_nodes.geojson'
 
-osm_to_bws(linksfp, nodesfp, oneway_col='oneway')
+def bike_lane_presence(links):
+    
+    #bike facilities
+    osm_bike_facilities_1 = (links['highway'] == "cycleway") | (links['highway_1'] == "cycleway")
+    
+    #ped specific with bicycle designation
+    osm_bike_facilities_2 = (links['highway'].isin(['footway','pedestrian'])) & (links['bicycle'].isin(['designated','yes']))
+    
+    #is bike lane
+    is_bike_lane = osm_bike_facilities_1 | osm_bike_facilities_2
+    
+    #bike lane/yes no
+    links['bike_lane'] = 0
+    links.loc[is_bike_lane,'bike_lane'] = 1
+    
+    return links
+
+def get_link_costs_osm(links,improvement):
+    #get link distance 
+    links['dist'] = links.length / 5280
+
+    #links multiplier
+    links['bl_multi'] = 1    
+    links['str_multi'] = 1
+    
+    #modify bike lanes (perceive as fourth of the distance)
+    links.loc[links['bike_lane']==1,'bl_multi'] = 0.25
+
+    #modify primary links (with no bike lane) as 4x the distance if bikelane present just use regular distance
+    stressful_links = ['primary','primary_link','secondary','secondary_link','trunk','trunk_link']
+    stressful_cond = links['highway'].isin(stressful_links)
+    links.loc[stressful_cond, 'str_multi'] = 4
+
+    #find per_distance
+    links['per_dist'] = links['dist'] * links['bl_multi'] * links['str_multi']
+    
+    if improvement is not None:
+        links['improvement_multi'] = 1
+        links.loc[(links['name'] == '10th Street Northwest') & (links['bike_lane'] == 0),'improvement_multi'] = 0.25
+        links['improvement'] = links['per_dist'] * links['improvement_multi']
+        links.drop(columns=['improvement_multi'],inplace=True)
+    
+    #drop excess columns
+    links.drop(columns=['bl_multi','str_multi'],inplace=True) 
+    
+    return links    
+
+    
+linksfp = r'processed_shapefiles/osm/osm_bikewaysim_base_links.geojson'
+nodesfp = r'processed_shapefiles/osm/osm_bikewaysim_base_nodes.geojson'
 
 
-#%% deprecated below
+improvement = '10th Street Northwest'
+links, nodes = osm_to_bws(linksfp, nodesfp, 'oneway',improvement)
 
 
+#export the netwokr files
+types = ['dist','per_dist','improvement']
+for atype in types:
+    #export the nodes
+    nodes.to_file(f'processed_shapefiles/prepared_network/{atype}/nodes/nodes.geojson',driver='GeoJSON')
+    
+    #rearrange the links
+    links_export = links[['A','B','A_B','name',atype,'geometry']]
+    links_export = links.rename(columns={atype:'distance'})
+    
+    links_export.to_file(f'processed_shapefiles/prepared_network/{atype}/links/links.geojson',driver='GeoJSON')
+    
+   
 
+#%% check network
 
-
-
-
+(links['per_dist'] - links['improvement']).describe() #works!
 
 #%% Facil Filters
 
