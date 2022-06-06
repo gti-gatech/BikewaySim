@@ -114,25 +114,46 @@ for scenario in scenarios:
 
     #run map trips function to get trip lines
     trip_lines = map_trips(links, od_pairs, paths, 'epsg:2240')
+    
+    #merge impedance and trip lines
+    impedance = pd.merge(impedance,trip_lines[['trip_id','time']],on=['trip_id']).rename(columns={'time':f'{scenario}_time'})
+    
+    #export trip lines
+    trip_lines.to_file(r'bikewaysim_outputs/trip_lines/trip_lines.gpkg',layer=scenario,driver='GPKG')
 
     #get betweenness centrality
     links_w_trips = betweeness_centrality(links, paths, 'epsg:2240')
     
-    #export
-
-    #merge with dfs for quick analysis
-    impedance = pd.merge(impedance,trip_lines[['trip_id','time']],on=['trip_id']).rename(columns={'time':f'{scenario}_time'})
     centrality = pd.merge(centrality, links_w_trips[['A','B','trips']],on=['A','B']).rename(columns={'trips':f'{scenario}_trips'})
-    links_dist = pd.merge(links_dist, links[['A','B','distance']],on=['A','B']).rename(columns={'distance':f'{scenario}'})
+    #links_dist = pd.merge(links_dist, links[['A','B','distance']],on=['A','B']).rename(columns={'distance':f'{scenario}'})
     
+
+# impedance = link cost # will be different
+# centrality = num of trips on a link # will be different
+# links_dist = physical length of link # should be same
+
 
 #%% find differences btw per_dist and improvement
 
-
+#get impedance difference between trips
 impedance['diff'] = impedance['per_dist_time'] - impedance['improvement_time']
 
-#find negative trips
+#get average impedance change
+impedance['diff'].mean()
+
+#find negative trips (there are six, maybe try running this again later)
 negative = impedance[impedance['diff']<0]
+
+#export the negative ones to examine
+negative 
+
+#%% export network centrality
+centrality.to_file(r'bikewaysim_outputs/analysis/centrality.gpkg',driver='GPKG')
+
+
+#%%
+
+
 
 #get od columns
 negative = pd.merge(negative,od_pairs,on='trip_id')[['ori_id','ori_lat','ori_lon','dest_id','dest_lat','dest_lon']]
