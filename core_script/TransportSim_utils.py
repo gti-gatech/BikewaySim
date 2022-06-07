@@ -14,6 +14,8 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import warnings
 
+from scipy.spatial import cKDTree
+
 warnings.filterwarnings('ignore')
 
 
@@ -32,22 +34,26 @@ def initialize_bikewaysim_links(grid_size=10000.0):  # needed only when updating
     file_name_nodes = os.path.join('nodes', 'nodes.geojson')
     file_name_links = os.path.join('links', 'links.geojson')
 
-    #read in links
+    #read in nodes and links
     df_nodes_raw = gpd.read_file(os.path.join(file_dir, file_name_nodes))
     df_links_raw = gpd.read_file(os.path.join(file_dir, file_name_links))
     
+    #filter nodes to just these columns
     df_nodes = df_nodes_raw[['N', 'X', 'Y', 'lat', 'lon']]
 
+    #filter links to just these columns
     df_links = df_links_raw[['A','B','A_B','distance','name','geometry']]
+    
+    #add node data to links
     df_links = df_links.merge(df_nodes.rename(columns={'N': 'A', 'X': 'Ax', 'Y': 'Ay', 'lat': 'A_lat', 'lon': 'A_lon'}),
                               how='left', on='A')
     df_links = df_links.merge(df_nodes.rename(columns={'N': 'B', 'X': 'Bx', 'Y': 'By', 'lat': 'B_lat', 'lon': 'B_lon'}),
                               how='left', on='B')
 
+    #  feel like this grid thing isn't neccessary
     def abm15_assignGrid(df_links):
         for col in ['minx', 'miny', 'maxx', 'maxy']:
             df_links[col + '_sq'] = round(df_links['geometry'].bounds[col] / grid_size, 0)
-        # df_links['dist']=df_links['geometry'].length
         return df_links
 
     df_links = abm15_assignGrid(df_links)
@@ -94,25 +100,25 @@ def build_bike_network(df_links):
     
     return DGo
 
-# add (x,y) given (lon, lat)
-def add_xy(df, lat, lon, x, y, x_sq, y_sq, grid_size=10000.0):
-    """
-    Given (lat, lon) information, generate coordinates in local projection system
-        Also, classify location into different categories using a grid and store the
-        row and column it falls into.
-    """
-    crs = {'init': 'epsg:4326', 'no_defs': True}  # NAD83: EPSG 4326
-    geometry = [Point(xy) for xy in zip(df[lon], df[lat])]
-    df = gpd.GeoDataFrame(df, crs=crs, geometry=geometry)
-    df = df.to_crs(epsg=2240)  # Georgia West (ftUS):  EPSG:2240
-    df[x] = df['geometry'].apply(lambda x: x.coords[0][0])
-    df[y] = df['geometry'].apply(lambda x: x.coords[0][1])
-    df[x_sq] = round(df[x] / grid_size, 0)
-    df[y_sq] = round(df[y] / grid_size, 0)
-    return df
+# # add (x,y) given (lon, lat)
+# def add_xy(df, lat, lon, x, y, x_sq, y_sq, grid_size=10000.0):
+#     """
+#     Given (lat, lon) information, generate coordinates in local projection system
+#         Also, classify location into different categories using a grid and store the
+#         row and column it falls into.
+#     """
+#     crs = {'init': 'epsg:4326', 'no_defs': True}  # NAD83: EPSG 4326
+#     geometry = [Point(xy) for xy in zip(df[lon], df[lat])]
+#     df = gpd.GeoDataFrame(df, crs=crs, geometry=geometry)
+#     df = df.to_crs(epsg=2240)  # Georgia West (ftUS):  EPSG:2240
+#     df[x] = df['geometry'].apply(lambda x: x.coords[0][0])
+#     df[y] = df['geometry'].apply(lambda x: x.coords[0][1])
+#     df[x_sq] = round(df[x] / grid_size, 0)
+#     df[y_sq] = round(df[y] / grid_size, 0)
+#     return df
 
-#see if this step can be sped up
-def point_to_node(df_points, df_links, ifGrid=False, walk_speed=2.0, grid_size=10000.0, dist_thresh=5280.0):
+
+def point_to_node(df_points, ifGrid=False, walk_speed=2.0, grid_size=10000.0, dist_thresh=5280.0):
     """
     Given a column of location projected to local coordinates (x, y), find nearest node in the network,
      record the node ID and the distance to walk to the node.
@@ -130,60 +136,164 @@ def point_to_node(df_points, df_links, ifGrid=False, walk_speed=2.0, grid_size=1
         df_points: expand same input DataFrame with information about the nearest node and
                    walking time from point to the node.
     """
-    def find_grid(pt_x):
-        return round(pt_x / grid_size), 0
 
-    def define_gridid(df_pts):
-        df_pts['x_sq'] = df_pts['geometry'].apply(lambda x: find_grid(x.coords[0][0]))
-        df_pts['y_sq'] = df_pts['geometry'].apply(lambda x: find_grid(x.coords[0][1]))
-        return df_pts
+    # reread nodes (figure out how to output nodes in the initalize function)
+    # edit file directory (figure out how to accept different spatial data types)
+    file_dir = os.environ['bws_NETWORK']
+    file_name_nodes = os.path.join('nodes', 'nodes.geojson')
 
-    def find_closestLink(point, lines):
-        dists = lines.distance(point)
-        # print('dists shapes', dists.shape)
-        return [dists.argmin(), dists.min()]
+    #read in nodes
+    df_nodes_raw = gpd.read_file(os.path.join(file_dir, file_name_nodes))
 
-    def calculate_dist(x1, y1, x2, y2):
-        return math.sqrt((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2))
+    #put all nodes into one
+    origs = df_points[['ori_id','ori_lat','ori_lon']].rename(
+        columns={'ori_id':'id','ori_lat':'lat','ori_lon':'lon'})
+    dests = df_points[['dest_id','dest_lat','dest_lon']].rename(
+        columns={'dest_id':'id','dest_lat':'lat','dest_lon':'lon'})
+    comb = origs.append(dests).drop_duplicates()
 
-    # INITIALIZATION
-    if ifGrid:
-        df_points = define_gridid(df_points)
-    df_points['NodeID'] = 0
-    df_points['Node_t'] = 0
-    # CALCULATION
-    for ind, row in df_points.iterrows():
-        try:
-            # find links in the grid. We search all 3*3 nearest grids
-            df_links_i = df_links[df_links['minx_sq'] <= row['x_sq']+1][df_links['maxx_sq'] >= row['x_sq']-1][
-                df_links['maxy_sq'] >= row['y_sq']-1][df_links['miny_sq'] <= row['y_sq']+1]
-            # print('# of links in the grid', len(df_links_i))
-            # print(df_links_i.index)
-            # find the closest link and the distance
-            LinkID_Dist = find_closestLink(row.geometry, gpd.GeoSeries(df_links_i.geometry))
-            # print('closest', LinkID_Dist)
-            linki = df_links_i.iloc[LinkID_Dist[0], :]
-            # find the closest node on the link
-            df_coords = df_points.loc[ind, 'geometry'].coords[0]
-            # print('coords', df_coords)
-            dist1 = calculate_dist(df_coords[0], df_coords[1], linki['Ax'], linki['Ay'])
-            dist2 = calculate_dist(df_coords[0], df_coords[1], linki['Bx'], linki['By'])
-            if (dist1 > dist_thresh) and (dist2 > dist_thresh):
-                df_points.loc[ind, 'NodeID'] = -1
-                df_points.loc[ind, 'Node_t'] = -1
-            else:
-                df_points.loc[ind, 'NodeID'] = linki['A'] if dist1 < dist2 else linki['B']
-                df_points.loc[ind, 'Node_t'] = dist1 / walk_speed / 5280.0 if \
-                    dist1 < dist2 else dist2 / walk_speed / 5280.0
-            # add distance o_d, d_d to dataframe
-            df_points.loc[ind, 'dist'] = min(dist1, dist2) / 5280.0
-        except Exception as e:
-            print('Error happens!', e)
-            df_points.loc[ind, 'NodeID'] = -1
-            df_points.loc[ind, 'Node_t'] = 0
+    comb['geometry'] = gpd.points_from_xy(comb['lon'], comb['lat'], crs='epsg:4326')
+
+    #needs to be projected coordinate system
+    comb = gpd.GeoDataFrame(comb).to_crs('epsg:2240')
+
+    #take in two geometry columns and find nearest gdB point from each
+    #point in gdA. Returns the matching distance too.
+    #MUST BE PROJECTED COORDINATE SYSTEM
+    def ckdnearest(gdA, gdB, return_dist=True):  
+        
+        nA = np.array(list(gdA.geometry.apply(lambda x: (x.x, x.y))))
+        nB = np.array(list(gdB.geometry.apply(lambda x: (x.x, x.y))))
+        btree = cKDTree(nB)
+        dist, idx = btree.query(nA, k=1)
+        gdB_nearest = gdB.iloc[idx].reset_index(drop=True)
+        
+        gdf = pd.concat(
+            [
+                gdA.reset_index(drop=True),
+                gdB_nearest,
+                pd.Series(dist, name='dist')
+            ], 
+            axis=1)
+        
+        if return_dist == False:
+            gdf = gdf.drop(columns=['dist'])
+        
+        return gdf
+
+    comb.columns = comb.columns + '_pts'
+    df_nodes_raw.columns = df_nodes_raw.columns + '_nds'
+
+    comb = comb.set_geometry('geometry_pts')
+    df_nodes_raw = df_nodes_raw.set_geometry('geometry_nds')
+
+    #find closest node
+    closest_node = ckdnearest(comb, df_nodes_raw)
+
+    # o = origin
+    # d = destination
+    # o_d = distance between origin and nearest network node
+    # o_t = walking time between origin and nearest network node
+    # ox_sq = a rounded X coord for origin
+
+    #rename columns to make dataframe
+    closest_node = closest_node.drop(columns=['lat_pts','lon_pts','geometry_pts','geometry_nds','lon_nds','lat_nds'])
+    origs = closest_node.rename(columns={'id_pts':'ori_id','N_nds':'o_node','X_nds':'ox','Y_nds':'oy','dist':'o_d'})
+    dests = closest_node.rename(columns={'id_pts':'dest_id','N_nds':'d_node','X_nds':'dx','Y_nds':'dy','dist':'d_d'})
+
+    #merge back to df_points
+    df_points = pd.merge(df_points, origs, on='ori_id', how='left')
+    df_points = pd.merge(df_points, dests, on='dest_id', how='left')
+
+    #make the sq columns
+    df_points['ox_sq'] = (df_points['ox'] / 10000).round(0)
+    df_points['oy_sq'] = (df_points['oy'] / 10000).round(0)
+    df_points['dx_sq'] = (df_points['dx'] / 10000).round(0)
+    df_points['dy_sq'] = (df_points['dy'] / 10000).round(0)
+
+    #make the time columns
+    df_points['o_t'] = df_points['o_d'] / walk_speed / 5280.0
+    df_points['d_t'] = df_points['d_d'] / walk_speed / 5280.0
+
     return df_points
 
+# #see if this step can be sped up
+# def point_to_node(df_points, df_links, ifGrid=False, walk_speed=2.0, grid_size=10000.0, dist_thresh=5280.0):
+#     """
+#     Given a column of location projected to local coordinates (x, y), find nearest node in the network,
+#      record the node ID and the distance to walk to the node.
+#     Arguments:
+#         df_points: a DataFrame containing projected coordinates.
+#                    Each row corresponds to one point.
+#         df_links: GeoDataFrame network files like abm15.shp,
+#                   each row denotes a directed link with two end nodes A and B.
+#         ifGrid: If False, compute the grid it falls into. If True, grid info is stored in df_points.
+#         walk_speed: walking speed default is 2.0 mph.
+#         grid_size: (I guess it should be) the width of the grid. Default is 25000 ft or 4.7 mile.
+#         dist_thresh: the maximum distance a normal person willing walk. Default is 1 mile.
 
+#     Returns:
+#         df_points: expand same input DataFrame with information about the nearest node and
+#                    walking time from point to the node.
+#     """
+#     def find_grid(pt_x):
+#         return round(pt_x / grid_size), 0
+
+#     def define_gridid(df_pts):
+#         df_pts['x_sq'] = df_pts['geometry'].apply(lambda x: find_grid(x.coords[0][0]))
+#         df_pts['y_sq'] = df_pts['geometry'].apply(lambda x: find_grid(x.coords[0][1]))
+#         return df_pts
+
+#     def find_closestLink(point, lines):
+#         dists = lines.distance(point)
+#         return [dists.argmin(), dists.min()]
+
+#     def calculate_dist(x1, y1, x2, y2):
+#         return math.sqrt((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2))
+
+#     # INITIALIZATION
+#     if ifGrid:
+#         df_points = define_gridid(df_points)
+#     df_points['NodeID'] = 0
+#     df_points['Node_t'] = 0
+#     # CALCULATION
+#     for ind, row in df_points.iterrows():
+#         try:
+#             # find links in the grid. We search all 3*3 nearest grids
+#             df_links_i = df_links[df_links['minx_sq'] <= row['x_sq']+1][df_links['maxx_sq'] >= row['x_sq']-1][
+#                 df_links['maxy_sq'] >= row['y_sq']-1][df_links['miny_sq'] <= row['y_sq']+1]
+#             # print('# of links in the grid', len(df_links_i))
+#             # print(df_links_i.index)
+#             # find the closest link and the distance
+#             LinkID_Dist = find_closestLink(row.geometry, gpd.GeoSeries(df_links_i.geometry))
+#             # print('closest', LinkID_Dist)
+#             linki = df_links_i.iloc[LinkID_Dist[0], :]
+#             # find the closest node on the link
+#             df_coords = df_points.loc[ind, 'geometry'].coords[0]
+#             # print('coords', df_coords)
+#             dist1 = calculate_dist(df_coords[0], df_coords[1], linki['Ax'], linki['Ay'])
+#             dist2 = calculate_dist(df_coords[0], df_coords[1], linki['Bx'], linki['By'])
+#             if (dist1 > dist_thresh) and (dist2 > dist_thresh):
+#                 df_points.loc[ind, 'NodeID'] = -1
+#                 df_points.loc[ind, 'Node_t'] = -1
+#             else:
+#                 df_points.loc[ind, 'NodeID'] = linki['A'] if dist1 < dist2 else linki['B']
+#                 df_points.loc[ind, 'Node_t'] = dist1 / walk_speed / 5280.0 if \
+#                     dist1 < dist2 else dist2 / walk_speed / 5280.0
+#             # add distance o_d, d_d to dataframe
+#             df_points.loc[ind, 'dist'] = min(dist1, dist2) / 5280.0
+#         except Exception as e:
+#             print('Error happens!', e)
+#             df_points.loc[ind, 'NodeID'] = -1
+#             df_points.loc[ind, 'Node_t'] = 0
+#     return df_points
+
+
+
+
+
+
+# old point matching code, took forever
 # def point_to_node(df_points, df_links, ifGrid=False, walk_speed=2.0, grid_size=10000.0, dist_thresh=5280.0):
 #     """
 #     Given a column of location projected to local coordinates (x, y), find nearest node in the network,
@@ -262,72 +372,21 @@ def point_to_node(df_points, df_links, ifGrid=False, walk_speed=2.0, grid_size=1
 
 #     return df_points
 
-
-
-
-    for ind, row in df_points.iterrows():
-        try:
-            # find links in the grid. We search all 3*3 nearest grids
-            df_links_i = df_links[df_links['minx_sq'] <= row['x_sq']+1][df_links['maxx_sq'] >= row['x_sq']-1][
-                df_links['maxy_sq'] >= row['y_sq']-1][df_links['miny_sq'] <= row['y_sq']+1]
-            # print('# of links in the grid', len(df_links_i))
-            # print(df_links_i.index)
-            # find the closest link and the distance
-            LinkID_Dist = find_closestLink(row.geometry, gpd.GeoSeries(df_links_i.geometry))
-            # print('closest', LinkID_Dist)
-            linki = df_links_i.iloc[LinkID_Dist[0], :]
-            # find the closest node on the link
-            df_coords = df_points.loc[ind, 'geometry'].coords[0]
-            # print('coords', df_coords)
-            dist1 = calculate_dist(df_coords[0], df_coords[1], linki['Ax'], linki['Ay'])
-            dist2 = calculate_dist(df_coords[0], df_coords[1], linki['Bx'], linki['By'])
-            if (dist1 > dist_thresh) and (dist2 > dist_thresh):
-                df_points.loc[ind, 'NodeID'] = -1
-                df_points.loc[ind, 'Node_t'] = -1
-            else:
-                df_points.loc[ind, 'NodeID'] = linki['A'] if dist1 < dist2 else linki['B']
-                df_points.loc[ind, 'Node_t'] = dist1 / walk_speed / 5280.0 if \
-                    dist1 < dist2 else dist2 / walk_speed / 5280.0
-            # add distance o_d, d_d to dataframe
-            df_points.loc[ind, 'dist'] = min(dist1, dist2) / 5280.0
-        except Exception as e:
-            print('Error happens!', e)
-            df_points.loc[ind, 'NodeID'] = -1
-            df_points.loc[ind, 'Node_t'] = 0
-    return df_points
-
 #back here
 def samp_pre_process(filename, dict_settings, option='bike'):
     df_links = dict_settings['network'][option]['links']
     walk_speed, grid_size, ntp_dist_thresh = dict_settings['walk_speed'], dict_settings['grid_size'], dict_settings[
         'ntp_dist_thresh']
 
+    #read in od data
     df_points = pd.read_csv(filename)
 
-    #consolodate df_points
-    orig = df_points[['ori_id','ori_lat','ori_lon']].rename(columns={'ori_id':'i_id','ori_lat':'i_lat','':})
-    dest = df_points[['Bx','By']].rename(columns={'Bx':'x','By':'y'})
-    df_points = orig.append(dest).drop_duplicates()
-
-    df_points = add_xy(df_points, 'ori_lat', 'ori_lon', 'x', 'y', 'x_sq', 'y_sq')
-    df_points = point_to_node(df_points, df_links, False, walk_speed, grid_size, ntp_dist_thresh) \
+    #add additional geo info to od data
+    #df_points = add_xy(df_points, 'ori_lat', 'ori_lon', 'x', 'y', 'x_sq', 'y_sq')
+    df_points = point_to_node(df_points, False, walk_speed, grid_size, ntp_dist_thresh) \
         .rename(columns={'NodeID': 'i_node', 'Node_t': 'i_t', 'x': 'ix', 'y': 'iy',
                          'x_sq': 'ix_sq', 'y_sq': 'iy_sq', 'dist': 'i_d'})
 
-    #merge back with df_points
-
-
-    # # print(df_points)
-    # df_points = add_xy(df_points, 'ori_lat', 'ori_lon', 'x', 'y', 'x_sq', 'y_sq')
-    # df_points = point_to_node(df_points, df_links, False, walk_speed, grid_size, ntp_dist_thresh) \
-    #     .rename(columns={'NodeID': 'o_node', 'Node_t': 'o_t', 'x': 'ox', 'y': 'oy',
-    #                      'x_sq': 'ox_sq', 'y_sq': 'oy_sq', 'dist': 'o_d'})
-    # # print(df_points)
-    # df_points = add_xy(df_points, 'dest_lat', 'dest_lon', 'x', 'y', 'x_sq', 'y_sq')
-    # df_points = point_to_node(df_points, df_links, False, walk_speed, grid_size, ntp_dist_thresh) \
-    #     .rename(columns={'NodeID': 'd_node', 'Node_t': 'd_t', 'x': 'dx', 'y': 'dy',
-    #                      'x_sq': 'dx_sq', 'y_sq': 'dy_sq', 'dist': 'd_d'})
-    # print(df_points)
     # origin, destination should be of different OD nodes and must found ODs to continue
     df_points = df_points[df_points['o_node'] != -1][df_points['d_node'] != -1][
         df_points['o_node'] != df_points['d_node']]
