@@ -79,22 +79,22 @@ def summurize_network(summary_table, fp, link_type, network):
 
 
 #%%
-import os
-from pathlib import Path
-import time
-import geopandas as gpd
-import pickle
+# import os
+# from pathlib import Path
+# import time
+# import geopandas as gpd
+# import pickle
 
-user_directory = os.fspath(Path.home()) #get home directory and convert to path string
-file_directory = r"/Documents/BikewaySimData" #directory of bikewaysim outputs
-os.chdir(user_directory+file_directory)
+# user_directory = os.fspath(Path.home()) #get home directory and convert to path string
+# file_directory = r"/Documents/BikewaySimData" #directory of bikewaysim outputs
+# os.chdir(user_directory+file_directory)
 
-#network names to look for, will search your directory for network name
-networks = ["abm","here","osm"]
-studyarea_name = "bikewaysim"
+# #network names to look for, will search your directory for network name
+# networks = ["abm","here","osm"]
+# studyarea_name = "bikewaysim"
 
-#summurize networks and export summary as "network_summary.csv in the working directory
-summary_table = sum_all_networks(networks, studyarea_name)
+# #summurize networks and export summary as "network_summary.csv in the working directory
+# summary_table = sum_all_networks(networks, studyarea_name)
 
 
 # import os
