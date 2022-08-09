@@ -73,21 +73,25 @@ def get_random_OD_pairs(poly, num_of_pairs):
 #%%method 2, TAZ centroids, deprecated
 #abm_nodes = gpd.read_file(r'processed_shapefiles/abm/abm_bikewaysim_base_nodes.geojson')
 
-bikewaysim_studyarea = gpd.read_file(r'processed_shapefiles/study_areas/study_area.geojson').to_crs('epsg:4326')
+# bikewaysim_studyarea = gpd.read_file(r'processed_shapefiles/study_areas/study_area.geojson').to_crs('epsg:4326')
 
-tazs = gpd.read_file(r'base_shapefiles/arc/Model_Traffic_Analysis_Zones_2020/Model_Traffic_Analysis_Zones_2020.shp',
-                     mask=bikewaysim_studyarea)
+# tazs = gpd.read_file(r'base_shapefiles/arc/Model_Traffic_Analysis_Zones_2020/Model_Traffic_Analysis_Zones_2020.shp',
+#                      mask=bikewaysim_studyarea)
 
-tazs.to_file('tu_delft/tazs.gpkg',driver='GPKG',layer='tazs')
+
+
+#tazs.to_file('tu_delft/tazs.gpkg',driver='GPKG',layer='tazs')
+
+tazs = gpd.read_file('trb2023/tazs.gpkg',layer='centroids') 
 
 #get centroid
-tazs['geometry'] = tazs.geometry.centroid
+#tazs['geometry'] = tazs.geometry.centroid
 
 
 tazs['FID_1'] = tazs['FID_1'].astype(str)
 
 #export centroids
-tazs.to_file('tu_delft/tazs.gpkg',driver='GPKG',layer='centroids')
+#tazs.to_file('tu_delft/tazs.gpkg',driver='GPKG',layer='centroids')
 
 
 #%%
@@ -124,6 +128,10 @@ od_pairs['dest_lon'] = od_pairs.geometry.x
 od_pairs['trip_id'] = od_pairs['ori_id'] + '_' + od_pairs['dest_id']
 od_pairs = od_pairs[['trip_id','ori_id','dest_id','ori_lat','ori_lon','dest_lat','dest_lon']]
 
+#export
+od_pairs.to_csv('bikewaysim_outputs/samples_in/all_tazs.csv', index = False)
+
+
 #%% alt method 2
 
 #tazs = gpd.read_file('demonstration_viz/tazs.geojson', ignore_geometry=True)
@@ -139,7 +147,7 @@ od_pairs = od_pairs[['trip_id','ori_id','dest_id','ori_lat','ori_lon','dest_lat'
 #%% for viz
 
 #for aggregate impedance
-single_taz_to_all = od_pairs[od_pairs['ori_id'] == '538']
-
+#single_taz_to_all = od_pairs[od_pairs['ori_id'] == '538']
+#
 #export
-single_taz_to_all.to_csv('bikewaysim_outputs/samples_in/single_taz_to_all.csv', index = False)
+#single_taz_to_all.to_csv('bikewaysim_outputs/samples_in/single_taz_to_all.csv', index = False)

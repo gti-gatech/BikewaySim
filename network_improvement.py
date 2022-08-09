@@ -19,38 +19,34 @@ file_directory = r"/Documents/BikewaySimData" #directory of bikewaysim network p
 os.chdir(user_directory+file_directory)
 
 #%% bring in links
+links = gpd.read_file(rf'processed_shapefiles/prepared_network/dist/links/links.geojson')
 
-dist = gpd.read_file(r'prepared_network/dist/links/links.geojson')
-per = gpd.read_file(r'prepared_network/per_dist/links/links.geojson')
+#%% start from distance col
 
-#%% drop duplicates?
-dist = dist.drop_duplicates()
-per = per.drop_duplicates()
+#modify primary links (with no bike lane) as 4x the distance if bikelane present just use regular distance
+stress_links = ['primary','primary_link','secondary','secondary_link','trunk','trunk_link']
+links['stress_cond'] = links['highway'].isin(stress_links)
 
-#rename dist column in per
-per = per.rename(columns={'distance':'per_distance'})
+#recalculate per distance
+links['per_dist'] = links['distance'] * (1-0.5*links['bike_lane']+1*links['stress_cond'])
 
-#merge by a_b
-comb = pd.merge(dist,per[['A_B','per_distance']],on=['A_B'])
+#%% make network improvment
 
-#recreate bike lane columns
-comb['mod'] = 1
-comb.loc[comb['distance'] > comb['per_distance'],'mod'] = 0.25
-comb.loc[comb['distance'] < comb['per_distance'],'mod'] = 4
-
-#put a bike lane on 10th
-comb.loc[comb.name == '10th Street Northwest','mod'] = 0.25
-
-#create new per_distance column
-comb['per_distance'] = comb['distance'] * comb['mod']
-
-#export
-comb = comb[per.columns.to_list()]
-comb = comb.rename(columns={'per_distance':'distance'})
-comb.to_file(r'prepared_network/improvement/links/links.geojson')
-
-#put a bike lane on boulevard
+#what road to improve?
+#st_names = [['10th Street Northwest','10th Street Northeast'],['Piedmont Avenue Northeast'],['']]
+st_names = ['Piedmont Avenue Northeast']
 
 
-#%% check dist columns
+#make improvement
+links.loc[links['name'].isin(st_names),'bike_lane'] = 1
+
+#recalculate per distance
+links['improvement'] = links['distance'] * (1-0.5*links['bike_lane']+1*links['stress_cond'])
+
+#export improved links
+links[links['improvement'] < links['per_dist']].to_file('trb2023/improvements.geojson',driver='GeoJSON')
+
+#%% export this
+
+links.to_file('trb2023/new_network.geojson',driver='GeoJSON')
 

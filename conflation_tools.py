@@ -6,6 +6,7 @@ Created on Thu Nov  4 14:56:07 2021
 """
 
 #%%
+import os
 import geopandas as gpd
 import pandas as pd
 import numpy as np
@@ -15,22 +16,43 @@ from itertools import compress
 from shapely.ops import LineString, Point, MultiPoint
 
 
-def cleaning_process(links, nodes, name):
+#function for importing networks
+def import_network(network_name,link_type,study_area):    
+    #expected relative fp
+    fp = f'processed_shapefiles/{network_name}/{network_name}_{study_area}_{link_type}_'
     
-    #column names for A, B, and/or linkID
-    mask = [f'{name}_A_B','geometry']
-    
-    #use mask to only keep neccessary columns
-    links = links[mask]
-    nodes = nodes[[f'{name}_ID','geometry']]
-    
-    #rename geometry collumns
-    links = links.rename(columns={'geometry':f'{name}_line_geo'}).set_geometry(f'{name}_line_geo')
-    nodes = nodes.rename(columns={'geometry':f'{name}_point_geo'}).set_geometry(f'{name}_point_geo')
+    if os.path.exists(fp + 'links.geojson'):
+        links = gpd.read_file(fp + 'links.geojson')
+    else:
+        print(f'{network_name} network links file does not exist')
 
+    if os.path.exists(fp + 'nodes.geojson'):
+        nodes = gpd.read_file(fp + 'nodes.geojson')
+    else:
+        print(f'{network_name} network nodes file does not exist')
+     
+    #calculates the number of connecting links for each node for filtering purposes
+    num_links = links[f'{network_name}_A'].append(links[f'{network_name}_B']).value_counts()
+    num_links.name = 'num_links'
+    nodes = pd.merge(nodes,num_links,left_on=f'{network_name}_ID',right_index=True)
+ 
+    #rename geometry collumns
+    links = links.rename(columns={'geometry':f'{network_name}_line_geo'}).set_geometry(f'{network_name}_line_geo')
+    nodes = nodes.rename(columns={'geometry':f'{network_name}_point_geo'}).set_geometry(f'{network_name}_point_geo')
+ 
     return links, nodes
 
-
+#initialize conflation
+#function creates columns in base links/nodes for join links/nodes ids to go when matched
+def initialize_base(base_links,base_nodes,join_name):
+    #links
+    base_links[f'{join_name}_A'] = None
+    base_links[f'{join_name}_B'] = None
+    base_links[f'{join_name}_A_B'] = None
+    
+    #nodes
+    base_nodes[f'{join_name}_ID'] = None
+    return base_links, base_nodes
 
 #%% Match Points Function
 
@@ -41,7 +63,7 @@ from scipy.spatial import cKDTree
 
 #take in two geometry columns and find nearest gdB point from each
 #point in gdA. Returns the matching distance too.
-#MUST BE PROJECTED COORDINATE SYSTEM
+#MUST BE A PROJECTED COORDINATE SYSTEM
 def ckdnearest(gdA, gdB, return_dist=True):  
     
     nA = np.array(list(gdA.geometry.apply(lambda x: (x.x, x.y))))
@@ -63,41 +85,53 @@ def ckdnearest(gdA, gdB, return_dist=True):
     
     return gdf
 
-def match_nodes(base_nodes, base_name, join_nodes, join_name, tolerance_ft, prev_matched_nodes = None, remove_duplicates = True, export_error_lines = False, export_unmatched = False):
+
+#%% new match_nodes that just appends matched nodes to base nodes
+
+# take in base and join nodes, and output just base nodes with added join nodes
+
+def match_nodes(base_nodes, base_name, join_nodes, join_name, tolerance_ft, remove_duplicates = True, export_error_lines = False, export_unmatched = False):
+     
+    #check for nodes that have already been matched and remove them
+    check_prev_matches = base_nodes[f'{join_name}_ID'].isnull()
+    base_matching = base_nodes[check_prev_matches]
     
-    #if there are previous matched nodes, remove them from the base and join nodes
-    if prev_matched_nodes is not None:
-        base_nodes = base_nodes[-base_nodes[f'{base_name}_ID'].isin(prev_matched_nodes[f'{base_name}_ID'])]
-        join_nodes = join_nodes[-join_nodes[f'{join_name}_ID'].isin(prev_matched_nodes[f'{join_name}_ID'])]
+    check_prev_matches = join_nodes[f'{join_name}_ID'].isin(base_nodes[f'{join_name}_ID'])
+    join_matching = join_nodes[-check_prev_matches]
+    
+    #drop join id from base
+    base_matching = base_matching.drop(columns=[f'{join_name}_ID'])
+    
+    #append new to join node id name
+    join_matching.rename(columns={f'{join_name}_ID':f'{join_name}_ID_new'},inplace=True)
+    
+    #print current number of matches
+    if check_prev_matches.sum() > 0:
+        print(f'{check_prev_matches.sum()} previous matches detected.')
     
     #from each base node, find the nearest join node
-    closest_nodes = ckdnearest(base_nodes, join_nodes)
+    closest_nodes = ckdnearest(base_matching,join_matching)
 
-    #filter out matched nodes where the match is greater than specified amount aka tolerence, 25ft seemed good
+    #filter out matched nodes where the match is greater than specified amount aka tolerence, 25ft seemed okay    
     matched_nodes = closest_nodes[closest_nodes['dist'] <= tolerance_ft]
-    
-    #print out the initial number of matches
-    print(f'{len(matched_nodes)} initial matches')
-    
+
     #if there are one to many matches, then remove_duplicates == True will only keep the match with the smallest match distance
     #set to false if you want to deal with these one to many joins manually
     if remove_duplicates == True:    
         
         #find duplicate matches
-        duplicate_matches = matched_nodes[matched_nodes[f'{join_name}_ID'].duplicated(keep=False)]
+        duplicate_matches = matched_nodes[matched_nodes[f'{join_name}_ID_new'].duplicated(keep=False)]
         
         #if two or base nodes match to the same join nodes, then only match the one with the smaller distance
-        duplicate_matches_removed = matched_nodes.groupby([f'{join_name}_ID'], sort=False)['dist'].min()
+        duplicate_matches_removed = matched_nodes.groupby([f'{join_name}_ID_new'], sort=False)['dist'].min()
     
         #used df_2 id to join back to matched nodes
         matched_nodes = pd.merge(matched_nodes, duplicate_matches_removed, how = 'inner', 
-                                 on=[f'{join_name}_ID','dist'], suffixes=(None,'_dup'))
-        
-        print(f'There were {len(duplicate_matches)} duplicates, now there are {len(matched_nodes)} matches.')
+                                 on=[f'{join_name}_ID_new','dist'], suffixes=(None,'_dup'))
         
     else:
         #mark which ones have been duplicated
-        duplicate_matches = matched_nodes[matched_nodes[f'{join_name}_ID'].duplicated(keep=False)]
+        duplicate_matches = matched_nodes[matched_nodes[f'{join_name}_ID_new'].duplicated(keep=False)]
         print(f'There are {len(duplicate_matches)} duplicate matches.')
 
     #if this is set to true, it will export a geojson of lines between the matched nodes
@@ -112,34 +146,49 @@ def match_nodes(base_nodes, base_name, join_nodes, join_name, tolerance_ft, prev
                                         "geometry":error_lines_geo}, geometry = "geometry")
         #export it to file
         error_lines.to_file(
-            rf'processed_shapefiles/matched_nodes/{base_name}_matched_to_{join_name}_{tolerance_ft}_errorlines.geojson', driver = 'GeoJSON')
+            rf'processed_shapefiles/conflation/node_matching/{base_name}_to_{join_name}_{tolerance_ft}ft.gpkg', layer='errorlines', driver = 'GPKG')
     
-    #drop join geometry and make sure base geometry active
-    matched_nodes = matched_nodes.filter([f'{base_name}_ID', f'{join_name}_ID'], axis = 1)
+    #filter matched nodes
+    matched_nodes = matched_nodes[[f'{base_name}_ID',f'{join_name}_ID_new']]
     
-    # find remaining nodes for both networks to manage which ones have been merged
-    #unmatched base nodes
-    unmatched_base_nodes = base_nodes[-base_nodes[f'{base_name}_ID'].isin(matched_nodes[f'{base_name}_ID'])]
+    #resolve with base nodes
+    base_nodes = pd.merge(base_nodes, matched_nodes, on=f'{base_name}_ID', how = 'left')
     
-    #unmatched join nodes
-    unmatched_join_nodes = join_nodes[-join_nodes[f'{join_name}_ID'].isin(matched_nodes[f'{join_name}_ID'])]
+    #if there is no existing join node id AND there is a matched node id then replace the None with the node id
+    cond = -(base_nodes[f'{join_name}_ID'].isnull() & -(base_nodes[f'{join_name}_ID_new'].isnull()))
+    base_nodes[f'{join_name}_ID'] = base_nodes[f'{join_name}_ID'].where(cond,base_nodes[f'{join_name}_ID_new'])
     
-    #if there was a previous match process, merge the old matching one with the new one
-    if prev_matched_nodes is not None:
-        matched_nodes = prev_matched_nodes.append(matched_nodes)    
+    #drop new node id columns
+    base_nodes.drop(columns=[f'{join_name}_ID_new'],inplace=True)
+
+    #find unmatched base nodes
+    unmatched_base_nodes = base_nodes[base_nodes[f'{join_name}_ID'].isnull()]
+    
+    #find unmatched join nodes
+    unmatched_join_nodes = join_nodes[-join_nodes[f'{join_name}_ID'].isin(base_nodes[f'{join_name}_ID'])]
     
     if export_unmatched == True:
-        unmatched_base_nodes.to_file(rf'processed_shapefiles/conflation/matched_nodes/unmatched_{base_name}_nodes.geojson', driver = 'GeoJSON')
-        unmatched_join_nodes.to_file(rf'processed_shapefiles/conflation/matched_nodes/unmatched_{join_name}_nodes.geojson', driver = 'GeoJSON')
+        #export
+        unmatched_base_nodes.to_file(rf'processed_shapefiles/conflation/node_matching/{base_name}_to_{join_name}_{tolerance_ft}ft.gpkg', layer='unmatched_base_nodes', driver = 'GPKG')
+        unmatched_join_nodes.to_file(rf'processed_shapefiles/conflation/node_matching/{base_name}_to_{join_name}_{tolerance_ft}ft.gpkg', layer='unmatched_join_nodes', driver = 'GPKG')
+
+    #get number of matched nodes
+    num_matches = (-(base_nodes[f'{join_name}_ID'].isnull())).sum()
     
     print(f'There are {len(unmatched_base_nodes)} {base_name} nodes and {len(unmatched_join_nodes)} {join_name} nodes remaining')
-    print(f'{len(matched_nodes)} node pairs have been matched so far.')
+    print(f'{num_matches - check_prev_matches.sum()} new matches')
+    print(f'{num_matches} node pairs have been matched so far.')
     
-    
-    return matched_nodes, unmatched_base_nodes, unmatched_join_nodes
+    return base_nodes
 
 
 #%% splitting base links by nearest joining nodes
+
+
+
+
+
+
 
 #this function finds the nearest point on a base link from every join node
 #this interpolated point will then be used to split the base link
@@ -151,6 +200,7 @@ def point_on_line(unmatched_join_nodes, join_name, base_links, base_name, tolera
     for index, row in unmatched_join_nodes.iterrows():
         # check if row in unmatched_join_nodes distance to all linestrings in base_links
         on_bool_list = base_links[f"{base_name}_line_geo"].distance(row[f"{join_name}_point_geo"]) < tolerance_ft 
+        
         if any(on_bool_list) == True: # if this row matches to base_links feature within the tolerance
             line_idx = list(compress(range(len(on_bool_list)), on_bool_list)) # find the corresponding line
             target_line = base_links.loc[line_idx[0],f"{base_name}_line_geo"]
@@ -265,6 +315,64 @@ def add_new_links_nodes(base_links, base_nodes, new_links, new_nodes, base_name)
     base_nodes = base_nodes.append(new_nodes)
     
     return base_links, base_nodes
+
+#%% new code
+
+def split_lines_create_points(base_nodes, join_nodes, join_name, base_links, base_name, tolerance_ft, export = False):
+    
+    #filter by num links
+    potential_nodes = join_nodes[(join_nodes['num_links'] > 2) | (join_nodes['num_links'] == 1)]
+    
+    #get CRS information
+    desired_crs = base_links.crs
+    
+    #note that these function use WKT to do the splitting rather than shapely geometry
+    split_points, line_to_split, unmatched_join_nodes = point_on_line(unmatched_join_nodes, join_name, base_links, base_name, tolerance_ft) #finds the split points
+    print(f"There are {len(split_points.index)} {join_name} points matching to {len(line_to_split[f'{base_name}_A_B'].unique())} {base_name} links")
+    print(f'There are {len(unmatched_join_nodes)} {join_name} nodes remaining')
+    
+    #splits the lines by nodes found in previous function
+    split_lines = split_by_nodes(line_to_split, split_points, base_name) 
+    print(f'There were {len(split_lines)} new lines created.')
+    
+    #drop the wkt columns and A_B column for points
+    split_points.drop(columns=[f'{base_name}_split_point_wkt',f'{base_name}_A_B'], inplace=True)
+    split_lines.drop(columns=[f'{base_name}_wkt'], inplace=True)
+    
+    #project gdfs
+    split_points.set_crs(desired_crs, inplace=True)
+    split_lines.set_crs(desired_crs, inplace=True)
+
+    if export == True:
+        #write these to file
+        split_lines.to_file("processed_shapefiles/conflation/line_splitting/split_lines.geojson", driver = "GeoJSON")
+        split_points.to_file("processed_shapefiles/conflation/line_splitting/split_points.geojson", driver = "GeoJSON")
+
+    return split_lines, split_points, unmatched_join_nodes
+
+
+# function to add new nodes/links
+def add_new_links_nodes(base_links, base_nodes, new_links, new_nodes, base_name):
+
+    #remove links that were splitted
+    mask = -base_links[f'{base_name}_A_B'].isin(new_links[f'{base_name}_A_B'])
+    base_links = base_links[mask]
+    
+    #add new links
+    base_links = base_links.append(new_links)
+     
+    #rename geo col
+    new_nodes = new_nodes.rename(columns={f'{base_name}_split_point_geo':f'{base_name}_point_geo'}).set_geometry(f'{base_name}_point_geo')
+    
+    #add split nodes to nodes with the here match
+    base_nodes = base_nodes.append(new_nodes)
+    
+    return base_links, base_nodes
+
+
+
+
+#%%
 
 def add_attributes(base_links, base_name, join_links, join_name, buffer_ft):
      

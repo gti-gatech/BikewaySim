@@ -214,7 +214,7 @@ def main_BikewaySim(bws):
                      'grid_size': 25000.0,
                      # for searching nearby links by grouping links to grids with width 25000 ft.
                      # for better efficiency in searching
-                     'ntp_dist_thresh': 5280.0,
+                     'ntp_dist_thresh': 0, #changed from 5280 to zero
                      # node to point (maximum distance access to network from origin/destination);
                      # a (walking) distance threshold
                      'network': {'bike': dict_bike},  # dump in networks and modes
@@ -224,9 +224,9 @@ def main_BikewaySim(bws):
                      'strategy': {'bike': 1},  # 1. find earliest arrival 2. find latest departure
                      'query_time': [8],  # departure time or arrival time of a trip, depends on the strategy
 
-                     'walk_thresh': {'bike': 1},  # walking threshold is 1 mile
+                     'walk_thresh': {'bike': 0},  # walking threshold is 1 mile #changed
                      'num_options': {'bike': 1},  # if set to 2, return 2-shortest paths
-                     'plot_all': True,  # if True, plot results and save plots for all routes found
+                     'plot_all': False,  # if True, plot results and save plots for all routes found
                      'one_by_one': False  # set time and strategy one by one
                      }
     # load dict_settings to the sws object

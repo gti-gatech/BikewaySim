@@ -8,50 +8,45 @@ Created on Wed Jun  9 09:15:35 2021
 import geopandas as gpd
 import pandas as pd
 import os
+import fiona
 
 
 def sum_all_networks(networks,studyarea_name):
     
     #summary table
-    summary_table = pd.DataFrame(columns=['network name','link_type','num_links','num_nodes','tot_link_length','avg_link_length'])
+    #can add other metrics of interest in the future
+    summary_table = pd.DataFrame(columns=['network','link_type','num_links','num_nodes','tot_link_length','avg_link_length'])
     
-    for i in networks:
-        summary_table = run_sum_function(summary_table, studyarea_name, i)
+    #expected link types
+    link_types = ['base','road','bike','service']
+
+    #go through each network
+    for network in networks:
+        #expected filepath
+        fp = rf'processed_shapefiles/{network}/{network}_{studyarea_name}_network.gpkg'
+        #check if gpkg file exists
+        if os.path.exists(fp):
+            #go through each link type
+            for link_type in link_types:
+                #check if network has link type
+                if link_type + '_links' in fiona.listlayers(fp):
+                    #get summary stats and append them to dataframe
+                    summary_table = summurize_network(summary_table, fp, link_type, network)
     
     #export summary table
     summary_table.to_csv(r"network_summary.csv",index=False)
    
     print(summary_table)
 
-def run_sum_function(summary_table, studyarea_name, network_name):
-	#certain link type shapefile exists, then add node ids to it and create node shapefile
-    if os.path.exists(rf'processed_shapefiles/{network_name}/{network_name}_{studyarea_name}_base_links.geojson'):
-        links, nodes = import_links_and_nodes(network_name, studyarea_name, "base")
-        summary_table = summurize_network(summary_table, links, nodes, network_name, studyarea_name, "base")
-
-    if os.path.exists(rf'processed_shapefiles/{network_name}/{network_name}_{studyarea_name}_road_links.geojson'):
-        links, nodes = import_links_and_nodes(network_name, studyarea_name, "road")
-        summary_table = summurize_network(summary_table, links, nodes, network_name, studyarea_name, "road")
-
-    if os.path.exists(rf'processed_shapefiles/{network_name}/{network_name}_{studyarea_name}_bike_links.geojson'):
-        links, nodes = import_links_and_nodes(network_name, studyarea_name, "bike")
-        summary_table = summurize_network(summary_table, links, nodes, network_name, studyarea_name, "bike")
-
-    if os.path.exists(rf'processed_shapefiles/{network_name}/{network_name}_{studyarea_name}_service_links.geojson'):
-        links, nodes = import_links_and_nodes(network_name, studyarea_name, "service")
-        summary_table = summurize_network(summary_table, links, nodes, network_name, studyarea_name, "service")
-    
-    return summary_table
-
 
 #%% Summurize Function
 
-def import_links_and_nodes(network_name, studyarea_name, link_type):
-    links = gpd.read_file(rf'processed_shapefiles/{network_name}/{network_name}_{studyarea_name}_{link_type}_links.geojson').set_crs(epsg=2240, allow_override = True)
-    nodes = gpd.read_file(rf'processed_shapefiles/{network_name}/{network_name}_{studyarea_name}_{link_type}_nodes.geojson').set_crs(epsg=2240, allow_override = True)
-    return links, nodes
 
-def summurize_network(summary_table, links, nodes, network_name, studyarea_name, link_type):
+def summurize_network(summary_table, fp, link_type, network):
+    
+    #import network
+    links = gpd.read_file(fp,layer=f'{link_type}_links').set_crs(epsg=2240, allow_override = True)
+    nodes = gpd.read_file(fp,layer=f'{link_type}_nodes').set_crs(epsg=2240, allow_override = True)
     
     #how many links
     num_links = len(links)
@@ -61,21 +56,46 @@ def summurize_network(summary_table, links, nodes, network_name, studyarea_name,
     
     #total mileage of links
     length_mi = links.geometry.length / 5280 # create a new distance column and calculate mileage of each link
-    sum_miles = round(length_mi.sum(),0)
+    tot_link_length = round(length_mi.sum(),0)
     
     #average link length
-    avg_len = round(links.geometry.length.mean(),1)
+    avg_link_length = round(links.geometry.length.mean(),1)
+    
+    #create data frame
+    summary_table.loc[len(summary_table)] = [network,link_type,num_links,num_nodes,tot_link_length,avg_link_length]
     
     #average number of connecting nodes
     #avg_connect_nodes = round(nodes[f'{network_name}_num_links'].mean(),2)
     
     #add to summary table
-    summary_table.loc[len(summary_table.index)] = [network_name, link_type, num_links, num_nodes, sum_miles, avg_len]
+    #summary_table.loc[len(summary_table.index)] = [network_name, link_type, num_links, num_nodes, sum_miles, avg_len]
     
     #Print Stats
     #print(f'There are {num_links} links, {num_nodes} nodes, {sum_miles} miles of links, and average link length of {avg_len} miles in {network_name}')
     
     return summary_table
+
+#%% run
+
+
+#%%
+import os
+from pathlib import Path
+import time
+import geopandas as gpd
+import pickle
+
+user_directory = os.fspath(Path.home()) #get home directory and convert to path string
+file_directory = r"/Documents/BikewaySimData" #directory of bikewaysim outputs
+os.chdir(user_directory+file_directory)
+
+#network names to look for, will search your directory for network name
+networks = ["abm","here","osm"]
+studyarea_name = "bikewaysim"
+
+#summurize networks and export summary as "network_summary.csv in the working directory
+summary_table = sum_all_networks(networks, studyarea_name)
+
 
 # import os
 

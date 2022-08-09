@@ -71,25 +71,28 @@ def build_bike_network(df_links):
     :return: DGo: directed link graph.
     """
     # TODO: maybe prepare bike speed in previous step instead of this simplification
-    df_links['bk_speed'] = 10  # 10 mph
-    df_links['grade'] = 0  # a default grade as a placeholder
+    #df_links['bk_speed'] = 9  # 10 mph
+    #df_links['grade'] = 0  # a default grade as a placeholder
     # The measure to use as cost of traverse a link
-    col = 'time'  # can be expand to other measures, like considering grades, etc.
+    col = 'distance'  # can be expand to other measures, like considering grades, etc.
 
-    def compute_link_cost(x, method):
+    # def compute_link_cost(x, method):
         
-        #speed method, figure out how to be able to indicate two different methods
-        x[method] = x['distance'] / x['bk_speed'] # mile / mph = hrs
-        # could implement other methods based on needs (e.g., consider grades, etc.)
+    #     #speed method, figure out how to be able to indicate two different methods
+    #     x[method] = x['distance'] / x['bk_speed'] # mile / mph = hrs
+    #     # could implement other methods based on needs (e.g., consider grades, etc.)
 
-        return x[method]
+    #     return x[method]
 
-    df_links[col] = df_links.apply(compute_link_cost, axis=1, method=col)
+    # df_links[col] = df_links.apply(compute_link_cost, axis=1, method=col)
 
     DGo = nx.DiGraph()  # create directed graph
     for ind, row2 in df_links.iterrows():
         # forward graph, time stored as minutes
-        DGo.add_weighted_edges_from([(str(row2['A']), str(row2['B']), float(row2[col]) * 60.0)],
+        # DGo.add_weighted_edges_from([(str(row2['A']), str(row2['B']), float(row2[col]))],
+        #                             weight='forward', dist=row2['distance'], name=row2['name'])
+        
+        DGo.add_weighted_edges_from([(str(row2['A']), str(row2['B']), float(row2[col]))],
                                     weight='forward', dist=row2['distance'], name=row2['name'])
         
     #export the network graph
@@ -520,6 +523,7 @@ def Bike_route_finder(row, option, dict_settings):
     else:
         strategy = dict_settings['strategy'][option]
     graph_direction = graph_type[strategy - 1]
+    
     # load the number of k-shortest paths required
     num_routes = dict_settings['num_options'][option]
 
@@ -540,6 +544,7 @@ def Bike_route_finder(row, option, dict_settings):
             weight = "forward"  # no need to reset all name attributes of the network, just go with "forward"
         else:
             reverse = False
+        
         if reverse:  # reverse the graph, search from target to source
             G = nx.DiGraph.reverse(G)
             path_generator = nx.shortest_simple_paths(G, target, source, weight)
@@ -574,6 +579,7 @@ def Bike_route_finder(row, option, dict_settings):
     # print(paths)
 
     # if need to plot, plot it!
+    # need to fix this
     plot_all = dict_settings['plot_all']
     if plot_all:
         for i, path in enumerate(paths):
@@ -764,6 +770,7 @@ def allRun(df_points, options, dict_settings):
     from datetime import datetime
     now = datetime.now()  # used time to uniquely name outputs sub-folder
     now_str = now.strftime("%m%d%y_%H%M%S")
+    print(now_str)
     new_folder = os.path.join('results', now_str)
     new_plot_folder = os.path.join('results_route', now_str)  # used to store folders
     os.mkdir(new_plot_folder)

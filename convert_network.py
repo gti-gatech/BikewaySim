@@ -16,7 +16,125 @@ user_directory = os.fspath(Path.home()) #get home directory and convert to path 
 file_directory = r"/Documents/BikewaySimData" #directory of bikewaysim outputs
 os.chdir(user_directory+file_directory)
 
-#%% Add back in attributes
+#%%
+
+#This code is for adding attributes back to the networks
+#and for converting attribute data into the format needed for impedance cost functions
+#the conversion will need to manually coded based on how the attribute data is formatted
+
+#%% Adding back in attributes
+
+#osm attribute reformatting
+
+#retrieved from People for Bikes BNA methodology
+relevant_attr = [
+    'cycleway',
+    'cycleway:left',
+    'cycleway:left:width',
+    'crossing',
+    'cycleway:right',
+    'cycleway:right:width',
+    'cycleway:both',
+    'cycleway:both:width',
+    'cycleway:buffer',
+    'cycleway:left:buffer',
+    'cycleway:right:buffer',
+    'cycleway:both:buffer',
+    'footway',
+    'highway',
+    'highway_1'
+    'landuse',
+    'lanes:forward',
+    'lanes:backward',
+    'lanes:both_ways',
+    'leisure',
+    'oneway',
+    'oneway:bicycle',
+    'parking:lane:right',
+    'parking:lane:right:width',
+    'parking:lane:left',
+    'parking:lane:left:width',
+    'parking:lane:both',
+    'parking:lane:both:width',
+    'shop',
+    'turn:lanes:both_ways',
+    'turn:lanes:backward',
+    'turn:lanes:forward',
+    'width'
+    ]
+
+
+
+data = pd.read_pickle(r'C:/Users/tpassmore6/Documents/BikewaySimData/base_shapefiles/osm/osm_attributes_bikewaysim.pickle')
+
+columns = ['osmid','highway','highway_1','bicycle',
+            'footway','cycleway','cycleway:both',
+            'cycleway:est_width','cycleway:left','cycleway:right'
+            ]
+data = data[columns]
+
+links = gpd.read_file(r'C:/Users/tpassmore6/Documents/BikewaySimData/processed_shapefiles/prepared_network/links/links.geojson')
+nodes = gpd.read_file(r'C:/Users/tpassmore6/Documents/BikewaySimData/processed_shapefiles/prepared_network/nodes/nodes.geojson')
+
+links = links[['A','B','A_B','osmid','name','distance','geometry']]
+
+links = pd.merge(links,data,on=['osmid']).drop_duplicates()
+
+#%% find osm bike infra
+
+check_if_null = ["cycleway", "cycleway:left", "cycleway:right", "cycleway:right:width", "cycleway:buffer", "cycleway:left:buffer",
+                 "cycleway:right:buffer", "cycleway:both:buffer"]
+filter_columns = []
+
+for column_names in check_if_null:
+    if column_names in links.columns:
+        filter_columns.append(column_names)
+
+#main filter
+osm_bike_facilities_1 = (links['highway'] == "cycleway") | (links['highway_1'] == "cycleway")
+
+osm_bike_facilities_2 = links[filter_columns].isna().all(axis=1) == False
+
+osm_bike_facilities_3 = (links != "shared_lane").all(axis=1)
+
+osm_bike_facilities = links[ (osm_bike_facilities_1 | osm_bike_facilities_2) & osm_bike_facilities_3]
+
+osm_bike_facilities.to_file(r'C:/Users/tpassmore6/Downloads/osm_bike.geojson', driver = 'GeoJSON')
+
+#bike lane/yes no
+links['bike_lane'] = 0
+links.loc[links['A_B'].isin(osm_bike_facilities['A_B']),'bike_lane'] = 1
+
+
+#%% percieved cost
+# create percieved link
+links['per_distance'] = links['distance']
+
+#modify bike lanes (perceive as half the distance)
+links.loc[links['bike_lane']==1,'per_distance'] = links['per_distance'] * 0.5
+
+#modify primary links (with no bike lane) as 4x the distance if bikelane present just use regular distance
+stressful_links = ['primary','primary_link','secondary','secondary_link','trunk','trunk_link']
+stressful_cond = links['highway'].isin(stressful_links)
+
+
+links.loc[(links['bike_lane']==0) & stressful_cond,'per_distance'] = links['distance'] * 4
+links.loc[(links['bike_lane']==1) & stressful_cond,'per_distance'] = links['distance']
+
+#%%lts planning version
+stressful_links = ['primary','primary_link','secondary','secondary_link']
+condition = (links['bike_lane']==0) & links['highway'].isin(stressful_links)
+links_lowstress = links[-condition]
+
+#%%
+
+
+
+
+
+
+
+
 
 # # add attributes to network if attributes were kept seperate
 # def merge_network_and_attributes(conflated_network_links, attr_networks):
@@ -74,6 +192,70 @@ os.chdir(user_directory+file_directory)
 
 #%%
 
+#%%bring in network data
+
+data = pd.read_pickle(r'C:/Users/tpassmore6/Documents/BikewaySimData/base_shapefiles/osm/osm_attributes_bikewaysim.pickle')
+
+columns = ['osmid','highway','highway_1','bicycle',
+            'footway','cycleway','cycleway:both',
+            'cycleway:est_width','cycleway:left','cycleway:right'
+            ]
+data = data[columns]
+
+links = gpd.read_file(r'C:/Users/tpassmore6/Documents/BikewaySimData/processed_shapefiles/prepared_network/links/links.geojson')
+nodes = gpd.read_file(r'C:/Users/tpassmore6/Documents/BikewaySimData/processed_shapefiles/prepared_network/nodes/nodes.geojson')
+
+links = links[['A','B','A_B','osmid','name','distance','geometry']]
+
+links = pd.merge(links,data,on=['osmid']).drop_duplicates()
+
+#%% find osm bike infra
+
+check_if_null = ["cycleway", "cycleway:left", "cycleway:right", "cycleway:right:width", "cycleway:buffer", "cycleway:left:buffer",
+                 "cycleway:right:buffer", "cycleway:both:buffer"]
+filter_columns = []
+
+for column_names in check_if_null:
+    if column_names in links.columns:
+        filter_columns.append(column_names)
+
+#main filter
+osm_bike_facilities_1 = (links['highway'] == "cycleway") | (links['highway_1'] == "cycleway")
+
+osm_bike_facilities_2 = links[filter_columns].isna().all(axis=1) == False
+
+osm_bike_facilities_3 = (links != "shared_lane").all(axis=1)
+
+osm_bike_facilities = links[ (osm_bike_facilities_1 | osm_bike_facilities_2) & osm_bike_facilities_3]
+
+osm_bike_facilities.to_file(r'C:/Users/tpassmore6/Downloads/osm_bike.geojson', driver = 'GeoJSON')
+
+#bike lane/yes no
+links['bike_lane'] = 0
+links.loc[links['A_B'].isin(osm_bike_facilities['A_B']),'bike_lane'] = 1
+
+
+#%% percieved cost
+# create percieved link
+links['per_distance'] = links['distance']
+
+#modify bike lanes (perceive as half the distance)
+links.loc[links['bike_lane']==1,'per_distance'] = links['per_distance'] * 0.5
+
+#modify primary links (with no bike lane) as 4x the distance if bikelane present just use regular distance
+stressful_links = ['primary','primary_link','secondary','secondary_link','trunk','trunk_link']
+stressful_cond = links['highway'].isin(stressful_links)
+
+
+links.loc[(links['bike_lane']==0) & stressful_cond,'per_distance'] = links['distance'] * 4
+links.loc[(links['bike_lane']==1) & stressful_cond,'per_distance'] = links['distance']
+
+#%%lts planning version
+stressful_links = ['primary','primary_link','secondary','secondary_link']
+condition = (links['bike_lane']==0) & links['highway'].isin(stressful_links)
+links_lowstress = links[-condition]
+
+#%%
 
 
 def osm_to_bws(linksfp, nodesfp, oneway_col, improvement = None):
