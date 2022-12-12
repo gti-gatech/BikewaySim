@@ -17,18 +17,27 @@ user_directory = os.fspath(Path.home()) #get home directory and convert to path 
 file_directory = r"/Documents/BikewaySimData" #directory of bikewaysim outputs
 os.chdir(user_directory+file_directory)
 
+#settings
+desired_crs = 'epsg:2240'
+here_attr = ['here_A_B','ST_NAME','SPEED_CAT','LANE_CAT','DIR_TRAVEL','FUNC_CLASS']
+studyareaname = 'marta'
 #%%
 
+#bring in filtered links
+filtered_links = gpd.read_file(f'processed_shapefiles/{studyareaname}/here_network.gpkg',layer='road_links')
+filtered_nodes = gpd.read_file(f'processed_shapefiles/{studyareaname}/here_network.gpkg',layer='road_nodes')
+
 #bring in attribute data
-here = gpd.read_file('processed_shapefiles/here/here_bikewaysim_network.gpkg',layer='base_links',ignore_geometry=False)
+raw_links = gpd.read_file(f'processed_shapefiles/{studyareaname}/here_network.gpkg',layer='base_links',ignore_geometry=True,rows=0)
+ignore_fields = [x for x in list(raw_links.columns) if x not in here_attr]
+raw_links = gpd.read_file(f'processed_shapefiles/{studyareaname}/here_network.gpkg',layer='base_links',ignore_fields=ignore_fields,ignore_geometry=True)
 
-#filter to certain columns
-here = here[['here_A_B','ST_NAME','SPEED_CAT','LANE_CAT','DIR_TRAVEL','AR_AUTO']]
+#attach attribute data to filtered links
+links = filtered_links.merge(raw_links,on='here_A_B')
 
+#%% speed categories
 
-
-#%% speed cat
-
+#these are all the possible speeds
 # here_speed_bins = {
 #     '1': '> 80 MPH',
 #     '2': '65-80 MPH',
@@ -40,74 +49,79 @@ here = here[['here_A_B','ST_NAME','SPEED_CAT','LANE_CAT','DIR_TRAVEL','AR_AUTO']
 #     '8': '< 6 MPH'
 #     }
 
-here['below25'] = 0
-bins = ['8','7']
-here.loc[here['SPEED_CAT'].isin(bins),'below25'] = 1
+#simplified speeds
+here_speed_bins = {
+    '1': '> 30',
+    '2': '> 30',
+    '3': '> 30',
+    '4': '> 30',
+    '5': '> 30',
+    '6': '25-30',
+    '7': '< 25',
+    '8': '< 25'
+    }
 
-here['25-30'] = 0 
-bins = ['6']
-here.loc[here['SPEED_CAT'].isin(bins),'25-30'] = 1
-
-here['above30'] = 0
-bins = ['1','2','3','4','5']
-here.loc[here['SPEED_CAT'].isin(bins),'above30'] = 1
-
+#replace speed categories
+links['SPEED_CAT'] = links['SPEED_CAT'].map(here_speed_bins)
 
 #%% lanes
 
+# all possible lane combos
 # here_lane_bins = {
 #     '1': 'one lane',
 #     '2': 'two or three lanes',
 #     '3': 'four or more'
 #     }
 
-here['1laneper'] = 0
-here.loc[here['LANE_CAT']=='1','1laneper'] = 1
+here_lane_bins = {
+    '1': '1',
+    '2': '2-3',
+    '3': '> 4'
+    }
 
-here['2to3lanesper'] = 0
-here.loc[here['LANE_CAT']=='2','2to3lanesper'] = 1
-
-here['4ormorelanesper'] = 0
-here.loc[here['LANE_CAT']=='3','4ormorelanesper'] = 1
+links['LANE_CAT'] = links['LANE_CAT'].map(here_lane_bins)
 
 #%% directionality
 
+# all possible directions
 # B	Both Directions
 # F	From Reference Node
 # T	To Reference Node
 # N	Closed in both directions
 
-here['oneway'] = 0
-bins = ['F','T']
-here.loc[here['DIR_TRAVEL'].isin(bins),'oneway'] = 1
+here_oneway_bins = {
+    'B':'both',
+    'F':'oneway',
+    'T':'wrongway',
+    'N': 'NA'
+    }
 
-here['wrongway'] = 0
-bins = ['T']
-here.loc[here['DIR_TRAVEL'].isin(bins),'wrongway'] = 1
+links['DIR_TRAVEL'] = links['DIR_TRAVEL'].map(here_oneway_bins) 
+
+#%% here functional class (does not correspond to FHWA or HFCS)
+
+func_class = {
+    '1':'highways',
+    '2':'major arterials',
+    '3':'collectors/minor arterials',
+    '4':'collectors/minor atrerials',
+    '5':'local'
+    }
+
+links['FUNC_CLASS'] = links['FUNC_CLASS'].map(func_class)
 
 #%% multi use paths
 
-here['mu'] = 0
-here.loc[here['AR_AUTO']=='N','mu'] = 1
+# multi_use_path = {
+#     'N': True,
+#     'Y': False
+#     }
 
-#%% filter
-
-here.drop(columns=['SPEED_CAT','LANE_CAT','DIR_TRAVEL'],inplace=True)
+# here['mu'] = 0
+# here.loc[here['AR_AUTO']=='N','mu'] = 1
 
 #%%
 
-
-#bring in conflated network
-#conflated_links = gpd.read_file('processed_shapefiles/conflation/finalized_networks/trb.gpkg',layer='links')
-conflated_links = gpd.read_file('processed_shapefiles/here/here_bikewaysim_network.gpkg',layer='roadbike_links')
-
-#merge
-conflated_links = pd.merge(conflated_links,here,on='here_A_B',how='left')
-
-#add arc bike attributes
-
-
-
-#export
-#conflated_links.to_file('processed_shapefiles/conflation/finalized_networks/trb.gpkg',layer='links')
-conflated_links.to_file('processed_shapefiles/conflation/finalized_networks/here_trb.gpkg',layer='links')
+#export for conflation
+links.to_file(f'to_conflate/{studyareaname}.gpkg',layer='here_links')
+filtered_nodes.to_file(f'to_conflate/{studyareaname}.gpkg',layer='here_nodes')

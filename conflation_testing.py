@@ -493,7 +493,7 @@ def add_attributes(base_links, join_links, join_name, buffer_ft, study_area, exp
     
     export_fp = rf'processed_shapefiles/conflation/attribute_transfer/attribute_transfer_{join_name}.gpkg'
     
-    #give base_links a temp column so each row has unique identifier (index basically does this too)
+    #give base_links a temp column so each row has unique identifier
     # A_B doesn't work because there might be duplicates from the split links step
     base_links['temp_ID'] = np.arange(base_links.shape[0]).astype(str)
     
@@ -740,7 +740,6 @@ def load_backup():
 
 # combine_bike_road('osm')
 # combine_bike_road('here')
-
 
 
 

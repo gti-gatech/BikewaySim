@@ -49,22 +49,23 @@ def ckdnearest(gdA, gdB, return_dist=True):
 def filter_networks(studyarea, studyarea_name, networkfp,
                     network_name, network_mapper, layer,
                     desired_crs, nodesfp, nodes_layer = None,
-                    node_id = None, A = None, B = None):
+                    node_id = None, A = None, B = None, bbox = False):
 
     #record the starting time
     tot_time_start = time.time()
     
     #create a new folder for the network if it doesn't already exist
-    if not os.path.exists(f'processed_shapefiles/{network_name}'):
-        os.makedirs(f'processed_shapefiles/{network_name}') 
+    if not os.path.exists(f'processed_shapefiles/{studyarea_name}'):
+        os.makedirs(f'processed_shapefiles/{studyarea_name}') 
 
     #import the network
     links, nodes = filter_to_general(studyarea, studyarea_name, networkfp,
                           network_name, network_mapper, layer,
                           desired_crs, nodesfp, nodes_layer,
-                          node_id, A, B)  
+                          node_id, A, B, bbox = bbox)  
 
     #apply filtering methods and create nodes
+    filter_to_roadbike(links, nodes, network_name, studyarea_name)
     filter_to_roads(links, nodes, network_name, studyarea_name)
     filter_to_bike(links, nodes, network_name, studyarea_name)
     filter_to_service(links, nodes, network_name, studyarea_name)
@@ -96,53 +97,17 @@ def cleaning_process(links, nodes, network_name):
 
     return links, nodes
 
-def add_ref_ids(links,nodes):
-    #get start/end geom of links
-    #match id to starting node
-    links['start_point_geo'] = links.apply(start_node_geo, geom= links.geometry.name, axis=1)
-    #set to active geo
-    links = links.set_geometry('start_point_geo')
-    #find nearest node from starting node
-    links = ckdnearest(links,nodes,return_dist=False)
-    #rename id columns to _A
-    links.columns = pd.Series(list(links.columns)).str.replace('_ID','_A')
-    #remove start node and base_node_geo columns
-    links = links.drop(columns=['start_point_geo',nodes.geometry.name])
-    #reset geometry
-    links = links.set_geometry(links_geo)
- 
-    #do same for end point
-    links['end_point_geo'] = links.apply(end_node_geo, geom= links.geometry.name, axis=1)
-    #set active geo
-    links = links.set_geometry('end_point_geo')
-    #find nearest node from starting node
-    links = ckdnearest(links,nodes,return_dist=False)
-    #rename id columns to _A
-    links.columns = pd.Series(list(links.columns)).str.replace('_ID','_B')
-    #remove end point
-    links = links.drop(columns=['end_point_geo',nodes.geometry.name])
-    #reset geometry   
-    links = links.set_geometry(links_geo)
-    
-    #check for missing ref ids
-    cols = list(links.columns)
-    a_cols = [cols for cols in cols if "_A" in cols]
-    b_cols = [cols for cols in cols if "_B" in cols]
-    #first see any As are missing
-    a_missing = links[a_cols].apply(lambda row: row.isnull().all(), axis = 1)
-    #then see if any Bs are missing
-    b_missing = links[b_cols].apply(lambda row: row.isnull().all(), axis = 1)
-    if a_missing.any() == True | b_missing.any() == True:
-        print("There are missing reference ids")
-    else:
-        print("Reference IDs successfully added to links.")
-    return links
+
 
 #use this to create a complete clean network
 def filter_to_general(studyarea, studyarea_name, networkfp,
                       network_name, network_mapper, layer,
                       desired_crs, nodesfp, nodes_layer,
-                      node_id, A, B):
+                      node_id, A, B, bbox = False):
+    
+    # get bounding box instead of polygon boundaries
+    if bbox == True:
+        studyarea.geometry = studyarea.envelope
     
     if layer == None:
         #explode and drop level to get rid of multi-index in abm layer
@@ -150,7 +115,7 @@ def filter_to_general(studyarea, studyarea_name, networkfp,
     else:
         #explode and drop level to get rid of multi-index in abm layer
         links = gpd.read_file(networkfp, mask = studyarea, layer = layer).explode().droplevel(level=1).to_crs(desired_crs) 
-     
+    
     #add in general cleaning measures here based on network_name
     #we want to just drop all links that don't allow bikes (highways/sidewalks)
     if network_name == 'osm':
@@ -231,13 +196,59 @@ def filter_to_general(studyarea, studyarea_name, networkfp,
         #nodes, links = make_nodes(links, network_name)
     
     #export links and nodes
-    links.to_file(rf'processed_shapefiles/{network_name}/{network_name}_{studyarea_name}_network.gpkg',layer='base_links',driver = 'GPKG')
-    nodes.to_file(rf"processed_shapefiles/{network_name}/{network_name}_{studyarea_name}_network.gpkg",layer='base_nodes',driver = 'GPKG')
+    links.to_file(rf'processed_shapefiles/{studyarea_name}/{network_name}_network.gpkg',layer='base_links',driver = 'GPKG')
+    nodes.to_file(rf"processed_shapefiles/{studyarea_name}/{network_name}_network.gpkg",layer='base_nodes',driver = 'GPKG')
     
     return links, nodes
 
-# Filtering Network to Road Links
+#filter to only roads that bikes allowed on and remove service roads
+def filter_to_roadbike(links, nodes, network_name, studyarea_name):  
+    filter_specified = True
+    
+    #filtering logic
+    if network_name == "osm": # osm network
+        print(f'{network_name} roadbike filter applied...')    
+        
+        #find service links that still have a name
+        service_links_with_name = links[ (links['highway'] == 'service') & (links['name'].isnull() == False) ]
+        
+        
+        osm_bike_filter_method = ['cycleway','footway','path','pedestrian','steps']
+        
+        osm_road_filter_method = ['primary','primary_link','residential','secondary','secondary_link',
+                            'tertiary','tertiary_link','trunk','trunk_link'] 
 
+        osm_filter_method = osm_bike_filter_method + osm_road_filter_method        
+
+        roadbike_links = links[links["highway"].isin(osm_filter_method)]
+        
+        #add back in service links with a name
+        roadbike_links = roadbike_links.append(service_links_with_name)
+        
+    elif network_name == "abm": # abm network
+        print(f'No further filter needed for {network_name}')
+        roadbike_links = links
+    
+    elif network_name == "here": # here network
+        print(f'{network_name} roadbike filter applied...')    
+        #only allow links that allow cars and dont have speed of < 6 mph b/c those are service links
+        roadbike_links = links[(links['SPEED_CAT'].str.contains('8') == False)]
+    else:
+        print(f"No road filtering method available for {network_name}...")
+        filter_specified = False
+
+    if filter_specified == True:
+        #create nodes
+        roadbike_nodes = filter_nodes(roadbike_links, nodes, network_name)
+        #cleaning_process
+        roadbike_links,roadbike_nodes = cleaning_process(roadbike_links,roadbike_nodes,network_name)
+        #export links
+        roadbike_links.to_file(rf'processed_shapefiles/{studyarea_name}/{network_name}_network.gpkg',layer='roadbike_links', driver = 'GPKG')   
+        #export nodes
+        roadbike_nodes.to_file(rf"processed_shapefiles/{studyarea_name}/{network_name}_network.gpkg",layer='roadbike_nodes', driver = 'GPKG')
+
+    
+# Filtering Network to Road Links
 def filter_to_roads(links, nodes, network_name, studyarea_name):  
     filter_specified = True
     
@@ -276,12 +287,11 @@ def filter_to_roads(links, nodes, network_name, studyarea_name):
         #cleaning_process
         road_links,road_nodes = cleaning_process(road_links,road_nodes,network_name)
         #export links
-        road_links.to_file(rf'processed_shapefiles/{network_name}/{network_name}_{studyarea_name}_network.gpkg',layer='road_links', driver = 'GPKG')   
+        road_links.to_file(rf'processed_shapefiles/{studyarea_name}/{network_name}_network.gpkg',layer='road_links', driver = 'GPKG')   
         #export nodes
-        road_nodes.to_file(rf"processed_shapefiles/{network_name}/{network_name}_{studyarea_name}_network.gpkg",layer='road_nodes', driver = 'GPKG')
+        road_nodes.to_file(rf"processed_shapefiles/{studyarea_name}/{network_name}_network.gpkg",layer='road_nodes', driver = 'GPKG')
         
 #Filtering Network to Bike Links
-
 def filter_to_bike(links, nodes, network_name, studyarea_name):     
     filter_specified = True
     
@@ -309,9 +319,9 @@ def filter_to_bike(links, nodes, network_name, studyarea_name):
         #cleaning_process
         bike_links,bike_nodes = cleaning_process(bike_links,bike_nodes,network_name)
         #export links
-        bike_links.to_file(rf'processed_shapefiles/{network_name}/{network_name}_{studyarea_name}_network.gpkg',layer='bike_links', driver = 'GPKG')
+        bike_links.to_file(rf'processed_shapefiles/{studyarea_name}/{network_name}_network.gpkg',layer='bike_links', driver = 'GPKG')
         #export nodes
-        bike_nodes.to_file(rf"processed_shapefiles/{network_name}/{network_name}_{studyarea_name}_network.gpkg",layer='bike_nodes', driver = 'GPKG')
+        bike_nodes.to_file(rf"processed_shapefiles/{studyarea_name}/{network_name}_network.gpkg",layer='bike_nodes', driver = 'GPKG')
     return
 
 #filtering to service links
@@ -344,9 +354,9 @@ def filter_to_service(links, nodes, network_name, studyarea_name):
         #cleaning_process
         service_links,service_nodes = cleaning_process(service_links,service_nodes,network_name)
         #export links
-        service_links.to_file(rf'processed_shapefiles/{network_name}/{network_name}_{studyarea_name}_network.gpkg',layer='service_links', driver = 'GPKG')
+        service_links.to_file(rf'processed_shapefiles/{studyarea_name}/{network_name}_network.gpkg',layer='service_links', driver = 'GPKG')
         #export nodes
-        service_nodes.to_file(rf"processed_shapefiles/{network_name}/{network_name}_{studyarea_name}_network.gpkg",layer='service_nodes',driver = 'GPKG')
+        service_nodes.to_file(rf"processed_shapefiles/{studyarea_name}/{network_name}_network.gpkg",layer='service_nodes',driver = 'GPKG')
     return
 
 # Extract Start and End Points as tuples and round to reduce precision
@@ -361,6 +371,51 @@ def start_node_geo(row, geom):
    return (Point(row[geom].coords.xy[0][0], row[geom].coords.xy[1][0])) 
 def end_node_geo(row, geom):
    return (Point(row[geom].coords.xy[0][-1], row[geom].coords.xy[1][-1]))
+
+
+# Creating Reference IDs
+
+def add_ref_ids(links,nodes):
+    #get start/end geom of links
+    #match id to starting node
+    links['start_point_geo'] = links.apply(start_node_geo, geom= links.geometry.name, axis=1)
+    #set to active geo
+    links = links.set_geometry('start_point_geo')
+    #find nearest node from starting node
+    links = ckdnearest(links,nodes,return_dist=False)
+    #rename id columns to _A
+    links.columns = pd.Series(list(links.columns)).str.replace('_ID','_A')
+    #remove start node and base_node_geo columns
+    links = links.drop(columns=['start_point_geo',nodes.geometry.name])
+    #reset geometry
+    links = links.set_geometry(links_geo)
+ 
+    #do same for end point
+    links['end_point_geo'] = links.apply(end_node_geo, geom= links.geometry.name, axis=1)
+    #set active geo
+    links = links.set_geometry('end_point_geo')
+    #find nearest node from starting node
+    links = ckdnearest(links,nodes,return_dist=False)
+    #rename id columns to _A
+    links.columns = pd.Series(list(links.columns)).str.replace('_ID','_B')
+    #remove end point
+    links = links.drop(columns=['end_point_geo',nodes.geometry.name])
+    #reset geometry   
+    links = links.set_geometry(links_geo)
+    
+    #check for missing ref ids
+    cols = list(links.columns)
+    a_cols = [cols for cols in cols if "_A" in cols]
+    b_cols = [cols for cols in cols if "_B" in cols]
+    #first see any As are missing
+    a_missing = links[a_cols].apply(lambda row: row.isnull().all(), axis = 1)
+    #then see if any Bs are missing
+    b_missing = links[b_cols].apply(lambda row: row.isnull().all(), axis = 1)
+    if a_missing.any() == True | b_missing.any() == True:
+        print("There are missing reference ids")
+    else:
+        print("Reference IDs successfully added to links.")
+    return links
 
 # use this to create node id if no nodes provided
 def create_node_ids(links, network_name, network_mapper):

@@ -10,38 +10,47 @@ from pathlib import Path
 import pandas as pd
 import geopandas as gpd
 import networkx as nx
+import osmnx as ox
+import time
 
 
 user_directory = os.fspath(Path.home()) #get home directory and convert to path string
-file_directory = r"/Documents/BikewaySimData" #directory of bikewaysim network processing code
+file_directory = r'\Documents\BikewaySimData\to_conflate' #directory of bikewaysim network processing code
 
 #change this to where you stored this folder
 os.chdir(user_directory+file_directory)
 
 #%%
+    
+def prepare_network(links,nodes,link_costs):
+    
+    #record the starting time
+    time_start = time.time()
+    
+    #group by attributes and get list of edges with identical attributes
+    #use this in the network reduction step
+    
+    #prepare nodes
+    nodes = create_bws_nodes(nodes)
 
-# def bws_network(links,nodes, oneway_col, improvement = None):
-#     #read in data
-#     links = gpd.read_file(linksfp)
-#     nodes = gpd.read_file(nodesfp)
+    #prepare links
+    links = create_bws_links(links)
 
-#     #get attributes (if needed)
+    #drop unconnect links and remove interstitial nodes
+    links,nodes = largest_comp_and_simplify(links,nodes)
 
-#     #create nodes file
-#     nodes = create_bws_nodes(nodes)
-    
-#     #filter links
-#     links = create_bws_links(links)
+    #create reverse streets
+    links = create_reverse_links(links)
 
-#     #calculate distances
-#     links = get_link_costs_osm(links,improvement)
+    # if link_costs == True:
+    #     #calculate link costs
+    #     links['per_dist'] = link_costs(links)
+        
+    print(f'took {round(((time.time() - time_start)/60), 2)} minutes')
     
-#     #create reverse links for two way streets
-#     links = create_reverse_links(links, oneway_col)
-    
-#     return links, nodes
-    
-    
+    return links, nodes
+
+
 def create_bws_links(links):
     #rename ID column
     a_cols = links.columns.tolist()
@@ -95,7 +104,6 @@ def create_reverse_links(links):
     
     links_rev = links.rename(columns={'A':'B','B':'A'})
 
-
     if 'wrongway' in links_rev.columns:
         #newwrongway
         links_rev['newwrongway'] = 0
@@ -108,9 +116,6 @@ def create_reverse_links(links):
         links_rev.drop(columns=['wrongway'],inplace=True)
         links_rev.rename(columns={'newwrongway':'wrongway'},inplace=True)
 
-    #filter to those that are two way
-    #links_rev = links_rev[(links_rev['oneway'] != 1)]
-
     #add to other links
     links = links.append(links_rev).reset_index(drop=True)
 
@@ -119,25 +124,25 @@ def create_reverse_links(links):
 
     return links
 
-def largest_comp(links,nodes): 
+def largest_comp_and_simplify(links,nodes): 
     #create undirected graph
     G = nx.Graph()  # create directed graph
     for ind, row2 in links.iterrows():
         # forward graph, time stored as minutes
         G.add_edges_from([(str(row2['A']), str(row2['B']))])
-                                    #weight='forward', name=row2['name'])
+
+    #only keep largest component
+    largest_cc = max(nx.connected_components(G), key=len)
     
-        #only keep largest component
-        largest_cc = max(nx.connected_components(G), key=len)
+    #simplify graph connect links connect with nodes of degree 2
+    simple_graph = ox.simplification.simplify_graph(largest_cc)
     
     #get nodes
-    nodes = nodes[nodes['N'].isin(largest_cc)]
-    
-    #use nodes to get links
-    links = links[links['A'].isin(nodes['N']) & links['B'].isin(nodes['N'])]
+    nodes = nodes[nodes['N'].isin(simple_graph)]
+    #get links
+    links = links[links['A'].isin(simple_graph) & links['B'].isin(simple_graph)]
     
     return links,nodes
-
     
 def link_costs(links):
     
@@ -181,66 +186,154 @@ def link_costs(links):
     
     return costs
 
-# def improvement_costs(links, improvement):
-#     #add a protected bike lane
-#     links.loc[links['A_B'].isin(improvements),'pbl'] = 1 
-    
-#     links['imp_dist'] = link_costs(links)
-    
-#     return links
+#%% 
 
-# def add_improvements(links):
-#     #bring in new features
-#     new_features = gpd.read_file('trb2023/network_improvements.gpkg',layer='new')
+# def simplify_graph(G,links):
     
-#     #bring in changes
-#     changes = gpd.read_file('trb2023/network_improvements.gpkg',layer='changes')
+#     if nx.degree(G)
 
-#     #
+
+# import numpy as np
+# import matplotlib.pyplot as plt
+# import networkx as nx
+
+
+# def contract(g):
+#     """
+#     Contract chains of neighbouring vertices with degree 2 into a single edge.
+
+#     Arguments:
+#     ----------
+#     g -- networkx.Graph or networkx.DiGraph instance
+
+#     Returns:
+#     --------
+#     h -- networkx.Graph or networkx.DiGraph instance
+#         the contracted graph
+
+#     """
+
+#     # create subgraph of all nodes with degree 2
+#     is_chain = [node for node, degree in g.degree() if degree == 2]
+#     chains = g.subgraph(is_chain)
+
+#     # contract connected components (which should be chains of variable length) into single node
+#     components = [chains.subgraph(c) for c in nx.components.connected_components(chains)]
+
+#     hyper_edges = []
+#     for component in components:
+#         end_points = [node for node, degree in component.degree() if degree < 2]
+#         candidates = set([neighbor for node in end_points for neighbor in g.neighbors(node)])
+#         connectors = candidates - set(list(component.nodes()))
+#         hyper_edge = list(connectors)
+#         weights = [component.get_edge_data(*edge)['weight'] for edge in component.edges()]
+#         hyper_edges.append((hyper_edge, np.sum(weights)))
+
+#     # initialise new graph with all other nodes
+#     not_chain = [node for node in g.nodes() if not node in is_chain]
+#     h = g.subgraph(not_chain).copy()
+#     for hyper_edge, weight in hyper_edges:
+#         h.add_edge(*hyper_edge, weight=weight)
+
+#     return h
+
+# # # create weighted graph
+# # edges = np.random.randint(0, 20, size=(int(400*0.2), 2))
+# # weights = np.random.rand(len(edges))
+# # g = nx.Graph()
+# # for edge, weight in zip(edges, weights):
+# #     g.add_edge(*edge, weight=weight)
+# # h = nx.algorithms.minimum_spanning_tree(g)
+
+# # contract
+# i = contract(DGo)
+
+# # # plot
+# # pos = nx.spring_layout(h)
+
+# # fig, (ax1, ax2) = plt.subplots(1, 2, sharex=True, sharey=True)
+# # nx.draw(h, pos=pos, ax=ax1)
+# # nx.draw(i, pos=pos, ax=ax2)
+# # plt.show()
+# # create subgraph of all nodes with degree 2
+# is_chain = [node for node, degree in DGo.degree() if degree == 2]
+# chains = g.subgraph(is_chain)
+
+
+
 
 
 #%% bring in links
 
-fp = 'processed_shapefiles/conflation/finalized_networks/here_trb.gpkg'
-links = gpd.read_file(fp,layer='links')
-fp = 'processed_shapefiles/here/here_bikewaysim_network.gpkg'
-nodes = gpd.read_file(fp,layer='roadbike_nodes')
+# fp = 'processed_shapefiles/conflation/finalized_networks/here_trb.gpkg'
+# links = gpd.read_file(fp,layer='links')
+# fp = 'processed_shapefiles/here/here_bikewaysim_network.gpkg'
+# nodes = gpd.read_file(fp,layer='roadbike_nodes')
 
-#create nodes file
-nodes = create_bws_nodes(nodes)
 
-#filter links
-links = create_bws_links(links)
+#osm
+road_links = gpd.read_file(r'processed_shapefiles\osm\osm_marta_network.gpkg',layer='road_links')
+road_nodes = gpd.read_file(r'processed_shapefiles\osm\osm_marta_network.gpkg',layer='road_nodes')
 
-#create reverse streets
-links = create_reverse_links(links)
+bike_links = gpd.read_file(r'processed_shapefiles\osm\osm_marta_network.gpkg',layer='bike_links')
+bike_nodes = gpd.read_file(r'processed_shapefiles\osm\osm_marta_network.gpkg',layer='bike_nodes')
 
-#drop unconnected links
-links,nodes = largest_comp(links,nodes)
+#%%combine layers
+roadbike_links = road_links.append(bike_links)
+roadbike_nodes = road_nodes.append(bike_nodes).drop_duplicates()
 
-#calculate link costs
-links['per_dist'] = link_costs(links)
+#%%
 
-#make improvements
-improvements = links.copy()
-changes = '10TH ST NW'
-#add mu
-improvements.loc[improvements['ST_NAME']==changes,'mu'] = 1
+# roadbike_links.rename(columns={'osm_A':'A','osm_B':'B'},inplace=True)
 
-#bring in new feature
-new = gpd.read_file('trb2023/network_improvements.gpkg',layer='new')
 
-#make reverse
-new = create_reverse_links(new)
+# #create undirected graph
+# G = nx.Graph()  # create directed graph
+# for ind, row2 in roadbike_links.iterrows():
+#     # forward graph, time stored as minutes
+#     G.add_edges_from([(str(row2['A']), str(row2['B']))])
 
-#add to network
-improvements = improvements.append(new)
+# #only keep largest component
+# largest_cc = max(nx.connected_components(G), key=len)
 
-#add impr cost
-improvements['imp_dist'] = link_costs(improvements)
+# #%%
 
-#%% export
-links.to_file('trb2023/network.gpkg',layer='links',driver='GPKG')
-improvements.to_file('trb2023/network.gpkg',layer='imp_links',driver='GPKG')
-nodes.to_file('trb2023/network.gpkg',layer='nodes',driver='GPKG')
+# #get nodes
+# roadbike_nodes.rename(columns={'osm_ID':'N'},inplace=True)
+# roadbike_nodes = roadbike_nodes[roadbike_nodes['N'].isin(largest_cc)]
+    
+# #use nodes to get links
+# roadbike_links = roadbike_links[roadbike_links['A'].isin(largest_cc) & roadbike_links['B'].isin(largest_cc)]
+
+#%%
+links, nodes = prepare_network(roadbike_links,roadbike_nodes,link_costs=False)
+
+#export
+print('exporting...')
+links.to_file(r'C:\Users\tpassmore6\Documents\TransitSimData\Data\osm_network.gpkg',layer='links',driver='GPKG')
+nodes.to_file(r'C:\Users\tpassmore6\Documents\TransitSimData\Data\osm_network.gpkg',layer='nodes',driver='GPKG')
+print('done.')
+
+# #make improvements
+# improvements = links.copy()
+# changes = '10TH ST NW'
+# #add mu
+# improvements.loc[improvements['ST_NAME']==changes,'mu'] = 1
+
+# #bring in new feature
+# new = gpd.read_file('trb2023/network_improvements.gpkg',layer='new')
+
+# #make reverse
+# new = create_reverse_links(new)
+
+# #add to network
+# improvements = improvements.append(new)
+
+# #add impr cost
+# improvements['imp_dist'] = link_costs(improvements)
+
+# #%% export
+# links.to_file('trb2023/network.gpkg',layer='links',driver='GPKG')
+# improvements.to_file('trb2023/network.gpkg',layer='imp_links',driver='GPKG')
+# nodes.to_file('trb2023/network.gpkg',layer='nodes',driver='GPKG')
    
