@@ -9,8 +9,22 @@ import networkx as nx
 import osmnx as ox
 import time
 
-def prepare_network(links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame,costs:dict):
-    
+def prepare_network(links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame,costs:dict,imp_name:str):
+    '''
+    This function takes in a links and nodes geodataframe and formats it into
+    a routable network graph for use in BikewaySim. The nodes geodataframe must
+    have an ID column wiht the suffix "_ID". The links geodataframe must have
+    columns specifying the starting node and ending node with the suffixes 
+    "_A" and "_B" specifying start and end node ID respectively.
+
+    The links file is then reduced to the largest connected network and reverse
+    links are created. The length of the links is calculated and added to a "dist"
+    column. Then the link costs are calculated based on the attributes specificed in
+    the costs dictionary. The keys of that dictionary must correspond to the columns of
+    the links geodataframe.
+
+    '''
+
     #record the starting time
     time_start = time.time()
     
@@ -32,7 +46,7 @@ def prepare_network(links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame,costs:dict):
     links['dist'] = links.length
     
     #calculate attribute based impedance
-    links = link_costs(links,costs)
+    links = link_costs(links,costs,imp_name)
         
     print(f'Took {round(((time.time() - time_start)/60), 2)} minutes to prepare the network.')
     
@@ -48,6 +62,10 @@ def create_bws_links(links):
     
     a_b_cols = links.columns.tolist()
     a_b_cols = [a_b_cols for a_b_cols in a_b_cols if "A_B" in a_b_cols]
+    
+    #warn if more than one column
+    if (len(a_cols) > 1) | (len(b_cols) > 1):
+        print('warning, more than one id column present')
     
     #replace with desired hierarchy
     links = links.rename(columns={a_cols[0]:'A'})
@@ -77,6 +95,10 @@ def create_bws_nodes(nodes):
     #rename ID column
     id_cols = nodes.columns.tolist()
     id_cols = [id_cols for id_cols in id_cols if "_ID" in id_cols]
+
+    #warn if more than one column
+    if (len(a_cols) > 1) | (len(b_cols) > 1):
+        print('warning, more than one id column present')
     
     #replace with desired hierarchy
     nodes = nodes.rename(columns={id_cols[0]:'N'})
@@ -134,7 +156,7 @@ def largest_comp_and_simplify(links,nodes):
     
     return links,nodes
     
-def link_costs(links,costs):
+def link_costs(links,costs,imp_name:str):
     
     #get list of columns names to use
     cols = list(costs.keys())

@@ -28,3 +28,29 @@ def ckdnearest(gdA, gdB, return_dist=True):
         gdf = gdf.drop(columns=['dist'])
     
     return gdf
+
+
+def snap_to_network(to_snap,network_nodes_raw):
+    #record the starting time
+    time_start = time.time()
+    
+    #create copy of network nodes
+    network_nodes = network_nodes_raw.copy()
+    
+    #rename geometry columns
+    to_snap.rename(columns={'geometry':'original'},inplace=True)
+    to_snap.set_geometry('original',inplace=True)
+    network_nodes.rename(columns={'geometry':'snapped'},inplace=True)
+    network_nodes.set_geometry('snapped',inplace=True)
+    
+    #find closest network node from each orig/dest
+    snapped_nodes = ckdnearest(to_snap, network_nodes)
+
+    #filter columns
+    snapped_nodes = snapped_nodes[to_snap.columns.to_list()+['N','dist']]
+        
+    #drop geo column
+    snapped_nodes.drop(columns=['original'],inplace=True)
+    
+    print(f'snapping took {round(((time.time() - time_start)/60), 2)} minutes')
+    return snapped_nodes

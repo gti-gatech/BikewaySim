@@ -11,10 +11,8 @@ import numpy as np
 import os
 from pathlib import Path
 
-#make directory/pathing more intuitive later
-user_directory = os.fspath(Path.home()) #get home directory and convert to path string
-file_directory = r"/Documents/BikewaySimData" #directory of bikewaysim outputs
-os.chdir(user_directory+file_directory)
+#change directory
+os.chdir(Path.home() / Path("Documents/BikewaySimData") #directory of bikewaysim outputs)
 
 #%%
 
@@ -22,12 +20,13 @@ os.chdir(user_directory+file_directory)
 #and for converting attribute data into the format needed for impedance cost functions
 #the conversion will need to manually coded based on how the attribute data is formatted
 
-#%% Adding back in attributes
+#Specify relevant columns to add back in
 
-#osm attribute reformatting
-
+#these are the relevant OSM attributes for finding impedances
 #retrieved from People for Bikes BNA methodology
 relevant_attr = [
+    'osmid',
+    'bicycle',
     'cycleway',
     'cycleway:left',
     'cycleway:left:width',
@@ -60,18 +59,20 @@ relevant_attr = [
     'turn:lanes:both_ways',
     'turn:lanes:backward',
     'turn:lanes:forward',
-    'width'
+    'width',
+    'cycleway:est_width'
     ]
 
 
-
+#osm attribute data
 data = pd.read_pickle(r'C:/Users/tpassmore6/Documents/BikewaySimData/base_shapefiles/osm/osm_attributes_bikewaysim.pickle')
 
-columns = ['osmid','highway','highway_1','bicycle',
-            'footway','cycleway','cycleway:both',
-            'cycleway:est_width','cycleway:left','cycleway:right'
-            ]
-data = data[columns]
+#search for all bike variables
+data.columns
+
+
+
+data = data[relevant_atrr]
 
 links = gpd.read_file(r'C:/Users/tpassmore6/Documents/BikewaySimData/processed_shapefiles/prepared_network/links/links.geojson')
 nodes = gpd.read_file(r'C:/Users/tpassmore6/Documents/BikewaySimData/processed_shapefiles/prepared_network/nodes/nodes.geojson')
