@@ -6,24 +6,9 @@ Created on Fri Jul 15 12:06:49 2022
 @author: tpassmore6
 """
 #%%
-import os
-import geopandas as gpd
-import pandas as pd
-import numpy as np
-from shapely import wkt
-from shapely.wkt import dumps
-from itertools import compress
-from shapely.ops import LineString, Point, MultiPoint
 
-import os
-from pathlib import Path
-import time
-import geopandas as gpd
-import pickle
 
-user_directory = os.fspath(Path.home()) #get home directory and convert to path string
-file_directory = r"/Documents/BikewaySimData" #directory of bikewaysim outputs
-os.chdir(user_directory+file_directory)
+
 
 #%%
 
@@ -60,36 +45,7 @@ def initialize_base(base_links,base_nodes,join_name):
     base_nodes[f'{join_name}_ID'] = None
     return base_links, base_nodes
 
-#%% Match Points Function
 
-#base function
-#https://gis.stackexchange.com/questions/222315/geopandas-find-nearest-point-in-other-dataframe
-
-from scipy.spatial import cKDTree
-
-#take in two geometry columns and find nearest gdB point from each
-#point in gdA. Returns the matching distance too.
-#MUST BE A PROJECTED COORDINATE SYSTEM
-def ckdnearest(gdA, gdB, return_dist=True):  
-    
-    nA = np.array(list(gdA.geometry.apply(lambda x: (x.x, x.y))))
-    nB = np.array(list(gdB.geometry.apply(lambda x: (x.x, x.y))))
-    btree = cKDTree(nB)
-    dist, idx = btree.query(nA, k=1)
-    gdB_nearest = gdB.iloc[idx].reset_index(drop=True)
-    
-    gdf = pd.concat(
-        [
-            gdA.reset_index(drop=True),
-            gdB_nearest,
-            pd.Series(dist, name='dist')
-        ], 
-        axis=1)
-    
-    if return_dist == False:
-        gdf = gdf.drop(columns=['dist'])
-    
-    return gdf
 
 
 #%% new match_nodes that just appends matched nodes to base nodes
@@ -442,140 +398,11 @@ def split_by_nodes(lines_to_split, split_points, base_name):
 
 #%% add attributes in for next step
 
-#need to carve out exceptions for no name streets?
-def dissolve_by_attr(buffered_links,join_name,study_area):
-    #expected filepath pattern for retrieving attributes
-    fp = f'processed_shapefiles/{join_name}/{join_name}_{study_area}_network.gpkg'
-    
-    #bring in attributes
-    #may need to change by link type
-    if os.path.exists(fp):
-        #import link attributes (geometry not necessary)
-        attr = gpd.read_file(fp,layer='base_links',ignore_geometry=True)
-        
-        #for each network, specify which attributes you want to use to check
-        if join_name == 'here':
-            #use street name, functional classification, speed category, and lane category
-            columns = ['ST_NAME','FUNC_CLASS','SPEED_CAT','LANE_CAT']
-        elif join_name == 'osm':
-            columns = ['osmid']
-        else:
-            columns = None
-        
-        #check if there were attributes specified
-        if columns is not None:
-            #turn attribute comlumns into tuple
-            attr['attr_tup'] = [tuple(x) for x in attr[columns].values.tolist()]
-            
-            #filter attr df
-            attr = attr[[f'{join_name}_A_B','attr_tup']+columns]
-            
-            #merge with join links
-            links = pd.merge(buffered_links,attr,on=f'{join_name}_A_B')
-            
-            #get list of dissolved ids
-            #group = links.groupby('attr_tup')
-            
-            #disolve geo
-            dissolved_buffer = links.dissolve('attr_tup')
-            
-            #reset index
-            dissolved_buffer = dissolved_buffer.reset_index()
-            
-            #filter columns
-            dissolved_buffer = dissolved_buffer[[f'{join_name}_A_B','attr_tup','geometry']+columns]
-        
-        return dissolved_buffer, columns
 
-#%% attribute transfer and add rest of links
 
-def add_attributes(base_links, join_links, join_name, buffer_ft, study_area, export=True):
-    
-    export_fp = rf'processed_shapefiles/conflation/attribute_transfer/attribute_transfer_{join_name}.gpkg'
-    
-    #give base_links a temp column so each row has unique identifier
-    # A_B doesn't work because there might be duplicates from the split links step
-    base_links['temp_ID'] = np.arange(base_links.shape[0]).astype(str)
-    
-    #calculate original base_links link length
-    base_links['length'] = base_links.geometry.length
-    
-    #create copy of join links to use for bufferring
-    buffered_links = join_links.copy()
-    
-    #buffer the join links by tolerance_ft
-    buffered_links['geometry'] = buffered_links.buffer(buffer_ft)
-    
-    #make sure it's the active geometry
-    buffered_links.set_geometry('geometry',inplace=True)
-    
-    #filter join links to just link id and geometry
-    buffered_links = buffered_links[[f'{join_name}_A_B','geometry']]
-    
-    #export buffered links
-    buffered_links.to_file(export_fp,layer='buffered_links',driver='GPKG')
 
-    #intersect with just buffered_links no dissolve 
-    #just_buffer = gpd.overlay(base_links, buffered_links, how='intersection')
-    
-    #dissolve the buffers according to attribute data
-    dissolved_buffer, columns = dissolve_by_attr(buffered_links,join_name,study_area)
-    
-    #dissolved buffer export
-    dissolved_buffer.drop(columns=['attr_tup']).to_file(export_fp,layer='dissolved_buffer',driver='GPKG')
-    
-    #intersect join buffer and base links
-    overlapping_links = gpd.overlay(base_links, dissolved_buffer, how='intersection')
-    
-    #re-calculate the link length to see which join buffers had the greatest overlap of base links
-    overlapping_links['percent_overlap'] = (overlapping_links.geometry.length / overlapping_links['length'] )
-    #just_buffer['percent_overlap'] = (just_buffer.geometry.length / just_buffer['length'])
-    
-    ##
-    #export overlapping to examine
-    overlapping_links.drop(columns=['attr_tup']).to_file(export_fp,layer='buffered_overlap',driver='GPKG')
-    #just_buffer.to_file(export_fp,layer='just_buffer_overlap',driver='GPKG')
-    ##  
-    
-    #select matches with greatest link overlap
-    max_overlap_idx = overlapping_links.groupby('temp_ID')['percent_overlap'].idxmax().to_list()
-    
-    #get matching links from overlapping links
-    match_links = overlapping_links.loc[max_overlap_idx]
-    
-    # #get list of here links that are overlapping
-    # attr_tup = match_links['attr_tup'].drop_duplicates().to_list()
-    # list_of_lists = [group.get_group(x)[f'{join_name}_A_B'].to_list() for x in attr_tup]
-    # flattened_list = [item for sublist in list_of_lists for item in sublist]
-    
-    # #join back with intersected data to get percent overlap
-    # #prolly shouldn't use flattened list for this?
-    # partial_overlap = overlapping_links[overlapping_links[f'{join_name}_A_B_2'].isin(flattened_list)]
-    # partial_overlap = partial_overlap[partial_overlap['percent_overlap'] < 0.8]
-    # partial_overlap = join_links[-(join_links[f'{join_name}_A_B'].isin(partial_overlap[f'{join_name}_A_B_2']))] 
-    
-    # #find links that need to be added
-    # rem_join_links = join_links[-(join_links[f'{join_name}_A_B'].isin(flattened_list))] 
-    
-    # #add in the partial overlap links
-    # rem_join_links = rem_join_links.append(partial_overlap)
-    
-    #join with base links
-    base_links = pd.merge(base_links,match_links[['temp_ID',f'{join_name}_A_B_2']+columns],on='temp_ID',)
 
-    #resolve join link id
-    base_links.loc[base_links[f'{join_name}_A_B'].isnull(),f'{join_name}_A_B'] = base_links.loc[base_links[f'{join_name}_A_B'].isnull(),f'{join_name}_A_B_2']
-    
-    #drop added columns
-    base_links.drop(columns=['temp_ID','length',f'{join_name}_A_B_2'],inplace=True)
-    
-    #test_export
-    base_links.to_file(export_fp, layer='base_links_w_join_attr', driver='GPKG')
-    
-    #drop the attr columns
-    base_links.drop(columns=columns,inplace=True)
-    
-    return base_links
+
 
 def add_rem_links(base_nodes,base_links,base_name,join_links,join_nodes,join_name,buffer_ft):
     
@@ -1011,61 +838,4 @@ base_nodes.to_file('processed_shapefiles/conflation/finalized_networks/trb.gpkg'
      
 #     return matching_links, overlapping_links
 
-# def max_overlap(links):
-#     #find most overlap
-#     links['maxidx'] = links.groupby('temp_ID')['percent_overlap'].transform('idxmax')
 
-#     #reset index to make it a column
-#     links.reset_index(inplace=True)
-    
-#     #and compare them
-#     links['ismax'] = links['index']==links['maxidx']
-    
-#     return links
-
-
-
-# def add_attributes(buffered_links,network_name,study_area):
-    
-#     #expected filepath pattern
-#     fp = f'processed_shapefiles/{join_name}/{join_name}_{study_area}_base_links_atrr.geojson'
-    
-#     #bring in attributes
-#     if os.path.exists(fp):
-#         #import link attributes (geometry not necessary)
-#         attr = gpd.read_file(fp,ignore_geometry=True)
-        
-#         #for each network, specify which attributes you want to use to check
-#         if join_name == 'here':
-#             #use street name, functional classification, speed category, and lane category
-#             columns = ['ST_NAME','FUNC_CLASS','SPEED_CAT','LANE_CAT']
-#         else:
-#             columns = None
-        
-#         #check if there were attributes specified
-#         if columns is not None:
-#             #turn attribute comlumns into tuple
-#             attr['attr_tup'] = [tuple(x) for x in attr[columns].values.tolist()]
-            
-#             #filter attr df
-#             attr = attr[[f'{network_name}_A_B','attr_tup']+columns]
-            
-#             #merge with join links
-#             links = pd.merge(join_links,attr,on=f'{network_name}_A_B')
-            
-#             #get list of dissolved ids
-#             group = links.groupby('attr_tup')
-            
-#             #disolve geo
-#             dissolved_buffer = links.dissolve('attr_tup')
-            
-#             #reset index
-#             dissolved_buffer = dissolved_buffer.reset_index(drop=True)
-            
-#             #filter columns
-#             dissolved_buffer = dissolved_buffer[[f'{network_name}_A_B','geometry']]
-    
-#             return dissolved_buffer, group
-#         else:
-#             print('No attributes available')
-#             return links

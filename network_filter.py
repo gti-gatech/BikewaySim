@@ -15,6 +15,7 @@ import time
 from shapely.geometry import Point
 from pathlib import Path
 import contextily as cx
+import fiona
 
 from helper_functions import *
 
@@ -56,8 +57,22 @@ def filter_networks(settings:dict,network_dict:dict):
 
     settings:
 
-    network_dict:
 
+    network_dict:
+    
+    "studyarea": studyarea, #geodataframe of the study area
+    "studyarea_name": studyarea_name, #name for the study area
+    "networkfp": networkfp, #filepath for the network, specified earlier
+    "network_name": 'abm', #name for the network being evaluated
+    "network_mapper": network_mapper, #leave this, edit in the block above
+    "layer": 0 #if network has layers, then specify which layer to look at; if no layers then leave as 0 
+    "desired_crs": "desired_crs", # leave this, edit in the CRS block
+    "nodesfp":None, # specify the nodes path if available, otherwise leave as None
+    "node_id": None, # specify the column in the nodes file that has the node id information, if not available leave as 0
+    "A": "A", #column with the starting node id; replace with None if there isn't a column
+    "B": "B", #column with the ending node id; replace with None if there isn't a column
+    "bbox": True, #use the bounding box of the study area as the mask for bringing in features instead of the polygon boundaries
+    
 
     '''
     #record the starting time
@@ -476,8 +491,65 @@ def export(links,nodes,network_type,network_name,settings):
     links = links[[f'{network_name}_A',f'{network_name}_B',f'{network_name}_A_B','geometry']]
     nodes = nodes[[f'{network_name}_N','geometry']]
     #export
-    export_fp = settings['output_fp'] / Path(f'{studyarea_name}/network_filtering.gpkg')
+    export_fp = settings['output_fp'] / Path(f'{studyarea_name}/filtered.gpkg')
     links.to_file(export_fp,layer=f'{network_name}_links_{network_type}')
     nodes.to_file(export_fp,layer=f'{network_name}_nodes_{network_type}')
     export_time = round(((time.time() - start_time)/60), 2)
     print(f'Took {export_time} minutes to export {network_name} {network_type} layer.')
+
+#TODO fix this function
+def summary(settings):
+    
+    output_fp = settings['output_fp']
+    studyarea_name = settings['studyarea_name']
+    
+    #summary table
+    #can add other metrics of interest in the future
+    summary_table = pd.DataFrame(columns=['network','link_type','num_links','num_nodes','tot_link_length','avg_link_length'])
+    
+    #expected link types
+    layers = fiona.listlayers(output_fp / Path(f'{studyarea_name}/filtered.gpkg'))
+
+    #remove node layers
+    layers = [x for x in layers if 'node' not in x]
+
+    #go through each network
+    for network in layers:
+        links = gpd.read_file(output_fp / Path(f'{studyarea_name}/filtered.gpkg'),layer=network)
+    
+        network_name = network.split('_')[0]
+    
+        #how many links
+        num_links = len(links)
+    
+        #how many nodes
+        nodes = pd.concat([links[f'{network_name}_A'],links[f'{network_name}_B']],ignore_index=True)
+        num_nodes = len(nodes.unique())
+
+        #total length
+        length_mi = links.geometry.length / 5280 # create a new distance column and calculate mileage of each link
+        tot_link_length = round(length_mi.sum(),0)
+
+        #average link length
+        avg_link_length = round(links.geometry.length.mean(),1)
+
+        #create data frame
+        summary_table.loc[network,:] = [num_links,num_nodes,tot_link_length,avg_link_length]
+
+    #export summary table
+    summary_table.to_csv(output_fp / Path(f"{studyarea_name}/network_summary.csv"))
+   
+    print(summary_table)
+
+
+# working_dir = Path.home() / Path('Documents/NewBikewaySimData')
+# settings = {
+#     'output_fp': working_dir, #where filtered network files will output
+#     'crs': "EPSG:2240", # project all spatial data to this CRS
+#     'studyarea_fp': working_dir / Path('Data/Study Areas/bikewaysim_studyarea.geojson'),
+#     'studyarea_name': 'bikewaysim',
+#     'studyarea_layer': None, #replace with study area layer name if file is gpkg or gdb
+#     'use_bbox': False # use bounding box instead of studyarea polygon boundaries as mask for importing links
+# }
+
+# summary(settings)

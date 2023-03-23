@@ -15,6 +15,8 @@ from shapely.wkt import dumps
 from itertools import compress
 from shapely.ops import LineString, Point, MultiPoint
 
+from helper_functions import ckdnearest
+
 
 #function for importing networks
 def import_network(network_name,link_type,study_area):    
@@ -53,37 +55,6 @@ def initialize_base(base_links,base_nodes,join_name):
     #nodes
     base_nodes[f'{join_name}_ID'] = None
     return base_links, base_nodes
-
-#%% Match Points Function
-
-#base function
-#https://gis.stackexchange.com/questions/222315/geopandas-find-nearest-point-in-other-dataframe
-
-from scipy.spatial import cKDTree
-
-#take in two geometry columns and find nearest gdB point from each
-#point in gdA. Returns the matching distance too.
-#MUST BE A PROJECTED COORDINATE SYSTEM
-def ckdnearest(gdA, gdB, return_dist=True):  
-    
-    nA = np.array(list(gdA.geometry.apply(lambda x: (x.x, x.y))))
-    nB = np.array(list(gdB.geometry.apply(lambda x: (x.x, x.y))))
-    btree = cKDTree(nB)
-    dist, idx = btree.query(nA, k=1)
-    gdB_nearest = gdB.iloc[idx].reset_index(drop=True)
-    
-    gdf = pd.concat(
-        [
-            gdA.reset_index(drop=True),
-            gdB_nearest,
-            pd.Series(dist, name='dist')
-        ], 
-        axis=1)
-    
-    if return_dist == False:
-        gdf = gdf.drop(columns=['dist'])
-    
-    return gdf
 
 
 #%% new match_nodes that just appends matched nodes to base nodes
