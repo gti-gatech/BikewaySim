@@ -46,7 +46,7 @@ def import_study_area(settings):
         (settings['output_fp'] / Path(settings['studyarea_name'])).mkdir()
 
     #export
-    studyarea.to_file((settings['output_fp'] / Path(settings['studyarea_name'] / Path('network_filtering.gpkg'))),layer='studyarea')
+    studyarea.to_file((settings['output_fp'] / Path(settings['studyarea_name'] / Path('filtering.gpkg'))),layer='studyarea')
 
     return studyarea
 
@@ -402,20 +402,22 @@ def end_node_geo(row, geom):
 
 def add_ref_ids(links,nodes,network_name):
     '''
-    This function adds reference columns to links.
+    This function adds reference columns to links from the nodes id column
     '''
     for_matching = links.copy()
     #make the first point the active geometry
-    for_matching['geometry'] = for_matching.apply(start_node_geo, geom='geometry', axis=1)
-    for_matching.set_geometry('geometry',inplace=True)
+    for_matching['pt_geometry'] = for_matching.apply(start_node_geo, geom='geometry', axis=1)
+    for_matching.set_geometry('pt_geometry',inplace=True)
+    for_matching.drop(columns='geometry',inplace=True)
     #find nearest node from starting node and add to column
     links[f'{network_name}_A'] = ckdnearest(for_matching,nodes,return_dist=False)[f'{network_name}_N']
     
     #repeat for end point
     for_matching = links.copy()
     #make the first point the active geometry
-    for_matching['geometry'] = for_matching.apply(end_node_geo, geom='geometry', axis=1)
-    for_matching.set_geometry('geometry',inplace=True)
+    for_matching['pt_geometry'] = for_matching.apply(end_node_geo, geom='geometry', axis=1)
+    for_matching.set_geometry('pt_geometry',inplace=True)
+    for_matching.drop(columns='geometry',inplace=True)
     #find nearest node from starting node and add to column
     links[f'{network_name}_B'] = ckdnearest(for_matching,nodes,return_dist=False)[f'{network_name}_N']
 
@@ -482,8 +484,6 @@ def filter_nodes(links,nodes,network_name):
     return nodes_filt
 
 def export(links,nodes,network_type,network_name,settings):
-    print(f'Exporting {network_name} {network_type} layer.')
-    start_time = time.time()
     studyarea_name = settings['studyarea_name']
     #filter nodes
     nodes = filter_nodes(links,nodes,network_name)
@@ -494,8 +494,7 @@ def export(links,nodes,network_type,network_name,settings):
     export_fp = settings['output_fp'] / Path(f'{studyarea_name}/filtered.gpkg')
     links.to_file(export_fp,layer=f'{network_name}_links_{network_type}')
     nodes.to_file(export_fp,layer=f'{network_name}_nodes_{network_type}')
-    export_time = round(((time.time() - start_time)/60), 2)
-    print(f'Took {export_time} minutes to export {network_name} {network_type} layer.')
+    return
 
 #TODO fix this function
 def summary(settings):
@@ -505,7 +504,7 @@ def summary(settings):
     
     #summary table
     #can add other metrics of interest in the future
-    summary_table = pd.DataFrame(columns=['network','link_type','num_links','num_nodes','tot_link_length','avg_link_length'])
+    summary_table = pd.DataFrame(columns=['num_links','num_nodes','tot_link_length','avg_link_length'])
     
     #expected link types
     layers = fiona.listlayers(output_fp / Path(f'{studyarea_name}/filtered.gpkg'))

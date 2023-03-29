@@ -10,7 +10,7 @@ from shapely.ops import LineString, Point, MultiPoint
 from pathlib import Path
 import geopandas as gpd
 
-def add_attributes(base_links, join_links, join_name, buffer_ft, non_network=False):
+def add_attributes(base_links, join_links, join_name, buffer_ft, overlap, dissolve=True):
     
     #give base_links a temp column so each row has unique identifier
     # A_B doesn't always work because there might be duplicates from the split links step
@@ -18,6 +18,9 @@ def add_attributes(base_links, join_links, join_name, buffer_ft, non_network=Fal
     
     #make a copy for intersecting
     intersect = base_links.copy()
+
+    #make intersect only tempid and geo
+    intersect = intersect[['temp_ID','geometry']]
 
     #calculate original base_links link length
     intersect['length'] = intersect.length
@@ -28,18 +31,20 @@ def add_attributes(base_links, join_links, join_name, buffer_ft, non_network=Fal
     #buffer the join links by tolerance_ft
     buffered_links.geometry = buffered_links.buffer(buffer_ft)
     
-    if non_network == True:
-        dissolved_links = buffered_links
-    else:
-        #drop unique columns
+    if dissolve:
+        #drop unique columns (no longer valid)
         buffered_links.drop(columns=[f'{join_name}_A',f'{join_name}_B',f'{join_name}_A_B'],inplace=True)
 
         #dissolve by attributes in join links
-        cols = [x for x in buffered_links.columns if x != 'geometry']
-        dissolved_links = buffered_links.dissolve(cols)
+        cols = buffered_links.columns.to_list()
+        cols.remove('geometry')
+        print(f'Dissolving by {len(cols)} columns')
+        dissolved_links = buffered_links.dissolve(cols).reset_index()
+    else:
+        dissolved_links = buffered_links
         
     #intersect join buffer and base links
-    overlapping_links = gpd.overlay(base_links, dissolved_links, how='intersection')
+    overlapping_links = gpd.overlay(intersect, dissolved_links, how='intersection')
     
     #re-calculate the link length to see which join buffers had the greatest overlap of base links
     overlapping_links['percent_overlap'] = (overlapping_links.length / overlapping_links['length'] )
@@ -50,13 +55,17 @@ def add_attributes(base_links, join_links, join_name, buffer_ft, non_network=Fal
     #get matching links from overlapping links
     match_links = overlapping_links.loc[max_overlap_idx,:]
     
+    #drop matches below the overlap threshhold
+    match_links = match_links[match_links['percent_overlap'] > overlap]
+
     #join back to base links
-    base_links = pd.merge(base_links,match_links.drop('geometry'),on='temp_ID')
+    base_links = pd.merge(base_links,match_links.drop(columns=['geometry']),on='temp_ID',how='left')
 
     #drop added columns
     base_links.drop(columns=['temp_ID','length'],inplace=True)
+    base_links.rename(columns={'percent_overlap':f'{join_name}_pct_overlap'},inplace=True)
     
-    return base_links, buffered_links, dissolved_links, match_links, overlapping_links
+    return base_links
 
 def add_osm_attr(links,attr_fp):
 
@@ -64,7 +73,7 @@ def add_osm_attr(links,attr_fp):
     attr = pd.read_pickle(attr_fp)
 
     #attach attribute data to filtered links
-    links = pd.merge(links,attr,on='osm_A_B')
+    links = pd.merge(links,attr,on=['osm_A','osm_B','osm_A_B'])
 
     #speed limit
 
@@ -76,7 +85,7 @@ def add_osm_attr(links,attr_fp):
     links['maxspeed'] = links['maxspeed'].apply(func)
 
     #speed categories
-    bins = [0,25,30,70]
+    bins = [0,24,30,999]
     names = ['< 25','25-30','> 30']
 
     #replace
@@ -92,7 +101,7 @@ def add_osm_attr(links,attr_fp):
     links['lanes'] = pd.to_numeric(links['lanes'])
 
     #speed cats
-    bins = [0,3,6,links.lanes.max()]
+    bins = [0,3,6,999]
     names = ['one lane', 'two or three lanes', 'four or more']
 
     #replace
@@ -102,7 +111,7 @@ def add_osm_attr(links,attr_fp):
     # road directionality
     links.loc[(links['oneway']=='-1') | (links['oneway'] is None),'oneway'] = 'NA'
 
-    #%% bike facilities
+    # bike facilities
 
     #get bike specific columns
     bike_columns = [x for x in links.columns.to_list() if (('cycle' in x) | ('bike' in x)) & ('motorcycle' not in x)]
@@ -127,7 +136,6 @@ def add_osm_attr(links,attr_fp):
     links.loc[(links[parking_columns].isin(parking_vals)).any(axis=1),'parking_pres'] = 'yes'
     links.loc[(links[parking_columns]=='no').any(axis=1),'parking_pres'] = 'yes'
     links.drop(columns=parking_columns,inplace=True)
-
 
     # sidewalk presence
     sidewalks = [x for x in links.sidewalk.unique().tolist() if x not in [None,'no','none']]
@@ -192,14 +200,12 @@ def add_here_attr(links,attr_fp):
     return links
 
 def add_abm_attr(links,attr_fp):
-    
-    abm_cols = ['SPEEDLIMIT','oneway']
 
     #bring in attribute data
     attr = pd.read_pickle(attr_fp)
 
     #attach attribute data to filtered links
-    links = pd.merge(links,attr,on='here_A_B')
+    links = pd.merge(links,attr,on=['here_A','here_B','here_A_B'])
     
     #speed
     links['SPEEDLIMIT']
@@ -219,7 +225,8 @@ def add_abm_attr(links,attr_fp):
     links['SPEEDLIMIT'] = np.select(conditions, values)
 
     #oneway
-    links['oneway'] = links['two_way'] == False
+    #links['oneway'] = links['two_way'] == False
+    links = links[['NAME','SPEEDLIMIT']]
 
     return links
 

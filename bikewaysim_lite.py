@@ -10,9 +10,12 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 from shapely.ops import MultiLineString
+from tqdm import tqdm
 
 from itertools import chain
 import time
+
+from helper_functions import *
 
 def snap_ods_to_network(od_pairs:pd.DataFrame,df_nodes:gpd.GeoDataFrame):
     """
@@ -67,8 +70,8 @@ def snap_ods_to_network(od_pairs:pd.DataFrame,df_nodes:gpd.GeoDataFrame):
     dests = closest_node.rename(columns={'id_ods':'dest_id','N_nds':'d_node','X_nds':'dx','Y_nds':'dy','dist':'d_d'})
     
     #merge back to od_pairs
-    od_pairs = pd.merge(od_pairs, origs, on='ori_id', how='left')
-    od_pairs = pd.merge(od_pairs, dests, on='dest_id', how='left')
+    od_pairs = pd.merge(od_pairs, origs, on='ori_id',suffixes=(None,None))
+    od_pairs = pd.merge(od_pairs, dests, on='dest_id',suffixes=(None,None))
     
     return od_pairs
     
@@ -121,7 +124,7 @@ def find_shortest(links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame,ods:pd.DataFrame
                 all_paths[(origin,key)] = edge_list
 
     #calculate betweeness centrality
-    links, nodes = btw_centrality(all_nodes,all_paths,links,nodes)
+    links, nodes = btw_centrality(all_nodes,all_paths,links,nodes,impedance_col)
 
     #add geometry
     all_geos = add_geo(all_paths,links)
@@ -138,9 +141,9 @@ def find_shortest(links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame,ods:pd.DataFrame
     #drop tuple
     ods.drop(columns=['tup'],inplace=True)
 
-    return ods
+    return ods, links, nodes
 
-def btw_centrality(all_nodes:dict,all_paths:dict,links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame):
+def btw_centrality(all_nodes:dict,all_paths:dict,links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame, impedance_col):
 
     #calculate betweenness centrality
     node_btw_centrality = pd.Series(list(chain(*[all_nodes[key] for key in all_nodes.keys()]))).value_counts()
@@ -200,7 +203,8 @@ def make_bikeshed(links,nodes,taz,ods,radius,buffer_size,impedance_col):
     '''
 
     #get network node
-    origin = ods.at[ods['ori_id']==taz,'o_node'].item()
+    origin = taz
+    #origin = ods.loc[ods['ori_id']==taz,'o_node'].unique().item()
 
     #turn links into directed graph
     DGo = create_graph(links,impedance_col)
@@ -208,7 +212,7 @@ def make_bikeshed(links,nodes,taz,ods,radius,buffer_size,impedance_col):
     #create bikeshed
     #https://networkx.org/documentation/stable/reference/generated/networkx.generators.ego.ego_graph.html
     #https://geonetworkx.readthedocs.io/en/latest/5_Isochrones.html
-    bikeshed = nx.ego_graph(DGo, radius=radius, n=origin, distance='weight')
+    bikeshed = nx.ego_graph(DGo, radius=radius, n=origin, distance=impedance_col)
             
     #make column for cleaner merging
     links['A_B_tup'] = list(zip(links['A'],links['B']))
@@ -221,6 +225,7 @@ def make_bikeshed(links,nodes,taz,ods,radius,buffer_size,impedance_col):
     bikeshed.drop(columns=['A_B_tup'],inplace=True)
     
     #drop dual links to get accurate size
+    #TODO fix this
     df_dup = drop_duplicate_links(bikeshed)
     
     print(f'---{taz}---')

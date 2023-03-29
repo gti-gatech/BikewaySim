@@ -9,7 +9,7 @@ import networkx as nx
 import osmnx as ox
 import time
 
-def prepare_network(links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame,costs:dict,imp_name:str):
+def prepare_network(links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame, spd_mph, rem_wrongway=True):
     '''
     This function takes in a links and nodes geodataframe and formats it into
     a routable network graph for use in BikewaySim. The nodes geodataframe must
@@ -42,29 +42,32 @@ def prepare_network(links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame,costs:dict,imp
     #create reverse streets
     links = create_reverse_links(links)
 
+    #remove wrongway
+    if rem_wrongway:
+        links = links[links['wrongway']==0]
+
     #calculate distance for distance/travel time based impedance
     links['dist'] = links.length
+    links['mins'] = links['dist'] / 5280 / spd_mph * 60
+
+    #round
+    links['dist'] = links['dist'].round(2)
+    links['mins'] = links['mins'].round(2)
     
-    #calculate attribute based impedance
-    links = link_costs(links,costs,imp_name)
-        
-    print(f'Took {round(((time.time() - time_start)/60), 2)} minutes to prepare the network.')
+    #print(f'Took {round(((time.time() - time_start)/60), 2)} minutes to prepare the network.')
     
     return links, nodes
 
 def create_bws_links(links):
     #rename ID column
-    a_cols = links.columns.tolist()
-    a_cols = [a_cols for a_cols in a_cols if "_A" in a_cols]
+    cols = links.columns.tolist()
     
-    b_cols = links.columns.tolist()
-    b_cols = [b_cols for b_cols in b_cols if "_B" in b_cols]
-    
-    a_b_cols = links.columns.tolist()
-    a_b_cols = [a_b_cols for a_b_cols in a_b_cols if "A_B" in a_b_cols]
+    a_cols = [a_cols for a_cols in cols if ("_A" in a_cols) & ("A_B" not in a_cols)]
+    b_cols = [b_cols for b_cols in cols if ("_B" in b_cols) & ("A_B" not in b_cols)]
+    a_b_cols = [a_b_cols for a_b_cols in cols if "A_B" in a_b_cols]
     
     #warn if more than one column
-    if (len(a_cols) > 1) | (len(b_cols) > 1):
+    if (len(a_cols) > 1) | (len(b_cols) > 1) | (len(a_b_cols) > 1):
         print('warning, more than one id column present')
     
     #replace with desired hierarchy
@@ -94,10 +97,10 @@ def create_bws_nodes(nodes):
     
     #rename ID column
     id_cols = nodes.columns.tolist()
-    id_cols = [id_cols for id_cols in id_cols if "_ID" in id_cols]
+    id_cols = [id_cols for id_cols in id_cols if "_N" in id_cols]
 
     #warn if more than one column
-    if (len(a_cols) > 1) | (len(b_cols) > 1):
+    if (len(id_cols) > 1):
         print('warning, more than one id column present')
     
     #replace with desired hierarchy
@@ -135,12 +138,21 @@ def create_reverse_links(links):
 
     return links
 
-def largest_comp_and_simplify(links,nodes): 
+def largest_comp_and_simplify(links,nodes,net_name=None): 
+    if net_name is not None:
+        A = net_name + '_A'
+        B = net_name + '_B'
+        N = net_name + '_N'
+    else:
+        A = 'A'
+        B = 'B'
+        N = 'N'
+    
     #create undirected graph
     G = nx.Graph()  # create directed graph
     for ind, row2 in links.iterrows():
         # forward graph, time stored as minutes
-        G.add_edges_from([(str(row2['A']), str(row2['B']))])
+        G.add_edges_from([(str(row2[A]), str(row2[B]))])
 
     #only keep largest component
     largest_cc = max(nx.connected_components(G), key=len)
@@ -150,9 +162,9 @@ def largest_comp_and_simplify(links,nodes):
     #simple_graph = ox.simplification.simplify_graph(S)
     
     #get nodes
-    nodes = nodes[nodes['N'].isin(largest_cc)]
+    nodes = nodes[nodes[N].isin(largest_cc)]
     #get links
-    links = links[links['A'].isin(largest_cc) & links['B'].isin(largest_cc)]
+    links = links[links[A].isin(largest_cc) & links[B].isin(largest_cc)]
     
     return links,nodes
     
@@ -164,17 +176,22 @@ def link_costs(links,costs,imp_name:str):
     #initalize a impedance multiply factor (sum of all coefficients times attribute values)
     links['imp_factor'] = 1
 
-    for col in cols:
-        # if row is a mup then set all other column values to zero
-        links.loc[links['mu']==1,col] = 0
+    # if row is a mup then set all other column values to zero
+    cols.remove('mu')
+    links.loc[links['mu']==1,cols] = 0
+    cols.append('mu')
 
+    for col in cols:
         # calculate impedance
         links['imp_factor'] = links['imp_factor'] + (links[col] * costs[col])
     
-    links['imp'] = links['dist'] * links['imp_factor']
+    links[imp_name] = links['mins'] * links['imp_factor']
     
     #check for negative impedances
-    if (links['imp'] < 0).any():
+    if (links[imp_name] < 0).any():
         print('Warning: negative link impedance present!')
 
     return links
+
+def apply_costs(links,cost_dicts,export_fp):
+    return
