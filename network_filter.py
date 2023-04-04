@@ -46,7 +46,7 @@ def import_study_area(settings):
         (settings['output_fp'] / Path(settings['studyarea_name'])).mkdir()
 
     #export
-    studyarea.to_file((settings['output_fp'] / Path(settings['studyarea_name'] / Path('filtering.gpkg'))),layer='studyarea')
+    studyarea.to_file((settings['output_fp'] / Path(settings['studyarea_name'] / Path('filtered.gpkg'))),layer='studyarea')
 
     return studyarea
 
