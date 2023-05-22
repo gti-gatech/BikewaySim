@@ -69,10 +69,11 @@ def download_osmnx(studyarea):
     nodes, links = ox.utils_graph.graph_to_gdfs(G)
 
     #reset index and name u and v to A and B
-    links = links.reset_index().rename(columns={'u':'A','v':'B'})
+    links = links.reset_index()#.rename(columns={'u':'A','v':'B'})
     
     #simplify columns to geo and id
-    links = links[['osmid','A','B','key','geometry']]
+    #links = links[['osmid','A','B','key','geometry']]
+    links = links[['osmid','geometry']]
 
     #reset nodes index
     nodes = nodes.reset_index()

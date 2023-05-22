@@ -81,10 +81,12 @@ def create_graph(links,impedance_col):
         DGo.add_weighted_edges_from([(str(row2['A']), str(row2['B']), float(row2[impedance_col]))],weight=impedance_col)   
     return DGo
         
-def find_shortest(links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame,ods:pd.DataFrame,impedance_col:str):
+def find_shortest(links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame,ods_:pd.DataFrame,impedance_col:str):
     #record the starting time
-    time_start = time.time()
+    #time_start = time.time()
     
+    ods = ods_.copy()
+
     #create network graph
     DGo = create_graph(links,impedance_col)    
     
@@ -101,14 +103,14 @@ def find_shortest(links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame,ods:pd.DataFrame
     #NOTE: routing is from snapped network node, not origin node
     for origin in tqdm(ods.o_node.unique()):
         #run dijkstra's algorithm (no limit to links considered)
-        impedances, paths = nx.single_source_dijkstra(DGo,origin,weight='weight')    
+        impedances, paths = nx.single_source_dijkstra(DGo,origin,weight=impedance_col)    
 
         #iterate through dijkstra results to add them to ods dataframe
         for key in impedances.keys():
             #check if trip is in one of the ones we want
             if (origin,key) in listcheck:
                 #for each trip id find impedance
-                ods.at[ods['tup']==(origin,key),impedance_col] = impedances[key]
+                ods.loc[ods['tup']==(origin,key),impedance_col] = impedances[key]
                 #all_impedances[(origin,key)] = impedances[key]
               
                 #convert from node list to edge list
@@ -141,6 +143,12 @@ def find_shortest(links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame,ods:pd.DataFrame
     #drop tuple
     ods.drop(columns=['tup'],inplace=True)
 
+    #print number that can't be routed
+    print(f"{ods[impedance_col].isna().sum()} trips couldnt be routed")
+
+    #simplify
+    ods = ods[['trip_id','ori_id','dest_id',impedance_col,'length','geometry']]
+
     return ods, links, nodes
 
 def btw_centrality(all_nodes:dict,all_paths:dict,links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame, impedance_col):
@@ -158,8 +166,8 @@ def btw_centrality(all_nodes:dict,all_paths:dict,links:gpd.GeoDataFrame,nodes:gp
     links[f'{impedance_col}_btw_cntrlty'].fillna(0,inplace=True)
 
     #what percent of trips used these links
-    nodes[f'{impedance_col}_std_btw_cntrlty'] = nodes[f'{impedance_col}_btw_cntrlty'] / len(all_nodes)#nodes[f'{impedance_col}_btw_cntrlty'].sum()
-    links[f'{impedance_col}_std_btw_cntrlty'] = links[f'{impedance_col}_btw_cntrlty'] / len(all_paths)#links[f'{impedance_col}_btw_cntrlty'].sum()
+    nodes[f'{impedance_col}_pct_btw_cntrlty'] = nodes[f'{impedance_col}_btw_cntrlty'] / len(all_paths)#nodes[f'{impedance_col}_btw_cntrlty'].sum()
+    links[f'{impedance_col}_pct_btw_cntrlty'] = links[f'{impedance_col}_btw_cntrlty'] / len(all_paths)#links[f'{impedance_col}_btw_cntrlty'].sum()
 
     return links, nodes
 
@@ -181,26 +189,53 @@ def percent_detour(dist,imp,tazs):
     Finds the percent detour and returns it as a column on the ods_imp gdf
     '''
     #drop the geometry col for ods_dist
-    imp = pd.merge(imp,dist[['trip_id','phys_dist']],on='trip_id',suffixes=('','_y'))
+    imp = pd.merge(imp,dist[['trip_id','length']],on='trip_id',suffixes=('','_y'))
 
     #calculate pct detour
-    imp['percent_detour'] = (imp['phys_dist'] - imp['phys_dist_y']) / imp['phys_dist_y'] * 100
+    imp['percent_detour'] = (imp['length'] - imp['length_y']) / imp['length_y'] * 100
 
     #get origin taz from trip id   
-    imp['FID_1'] = imp['trip_id'].str.split('_',expand=True)[0]
+    imp['OBJECTID'] = imp['trip_id'].str.split('_',expand=True)[0]
 
     #groupby for viz
-    by_taz = imp.groupby('FID_1')['percent_detour'].mean().reset_index()
+    by_taz = imp.groupby('OBJECTID')['percent_detour'].mean().reset_index()
 
     #add taz geo
-    by_taz = pd.merge(by_taz,tazs,on='FID_1')
+    by_taz = pd.merge(by_taz,tazs,on='OBJECTID')
 
-    return imp, by_taz
+    #round
+    by_taz['percent_detour'] = by_taz['percent_detour'].round(1)
 
-def make_bikeshed(links,nodes,taz,ods,radius,buffer_size,impedance_col):
+    return by_taz
+
+def impedance_change(imp,improved,tazs,impedance_col):
+    '''
+    Finds the percent detour and returns it as a column on the ods_imp gdf
+    '''
+    #drop the geometry cols
+    imp = pd.merge(imp[['trip_id',impedance_col]],improved[['trip_id',impedance_col]],on='trip_id',suffixes=('','_y'))
+
+    #calculate impedance change
+    imp['imp_change'] = (imp[impedance_col] - imp[impedance_col+'_y'])
+
+    #get origin taz from trip id   
+    imp['OBJECTID'] = imp['trip_id'].str.split('_',expand=True)[0]
+
+    #groupby for viz
+    by_taz = imp.groupby('OBJECTID')['imp_change'].mean().reset_index()
+
+    #add taz geo
+    by_taz = pd.merge(by_taz,tazs,on='OBJECTID')
+
+    return by_taz
+
+
+def make_bikeshed(links_c,nodes,taz,ods,radius,buffer_size,impedance_col):
     '''
     Get the bikeshed for select tazs.
     '''
+
+    links = links_c.copy()
 
     #get network node
     origin = taz

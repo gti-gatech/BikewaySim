@@ -5,6 +5,7 @@ Created on Tue Jul 26 05:41:07 2022
 @author: tpassmore6
 """
 import geopandas as gpd
+import pandas as pd
 import networkx as nx
 import osmnx as ox
 import time
@@ -42,9 +43,9 @@ def prepare_network(links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame, spd_mph, rem_
     #create reverse streets
     links = create_reverse_links(links)
 
-    #remove wrongway
-    if rem_wrongway:
-        links = links[links['wrongway']==0]
+    #remove wrongway (just don't include them for now)
+    # if rem_wrongway:
+    #     links = links[links['wrongway']==0]
 
     #calculate distance for distance/travel time based impedance
     links['dist'] = links.length
@@ -116,19 +117,23 @@ def create_reverse_links(links):
     #flip start and end node ids
     links_rev = links.rename(columns={'A':'B','B':'A'})
 
-    try:
-        #newwrongway
-        links_rev['newwrongway'] = 0
-    
-        #set wrongways to rightways and vice versa
-        links_rev.loc[links_rev['wrongway']==1,'newwrongway'] = 0
-        links_rev.loc[(links_rev['oneway']==1) & (links_rev['wrongway']==0),'newwrongway'] = 1 
+    #drop all oneway = true
+    links_rev = links_rev[links_rev['oneway'] != 'yes']
 
-        #rename and drop
-        links_rev.drop(columns=['wrongway'],inplace=True)
-        links_rev.rename(columns={'newwrongway':'wrongway'},inplace=True)
-    except:
-        print("No 'wrongway' column")
+    #HERE version
+    # try:
+    #     #newwrongway
+    #     links_rev['newwrongway'] = 0
+    
+    #     #set wrongways to rightways and vice versa
+    #     links_rev.loc[links_rev['wrongway']==1,'newwrongway'] = 0
+    #     links_rev.loc[(links_rev['oneway']==1) & (links_rev['wrongway']==0),'newwrongway'] = 1 
+
+    #     #rename and drop
+    #     links_rev.drop(columns=['wrongway'],inplace=True)
+    #     links_rev.rename(columns={'newwrongway':'wrongway'},inplace=True)
+    # except:
+    #     print("No 'wrongway' column")
 
     #add to other links
     links = links.append(links_rev).reset_index(drop=True)
@@ -168,7 +173,7 @@ def largest_comp_and_simplify(links,nodes,net_name=None):
     
     return links,nodes
     
-def link_costs(links,costs,imp_name:str):
+def link_costs(links:pd.DataFrame(),costs:dict,imp_name:str):
     
     #get list of columns names to use
     cols = list(costs.keys())
