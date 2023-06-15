@@ -18,10 +18,6 @@ def all_pairings_two(origins,ori_id,dests,dest_id):
     
     combs = list(itertools.combinations(origins,dests)
 
-
-
-
-
 def all_pairs(settings):
 
     studyarea_name = settings['studyarea_name']

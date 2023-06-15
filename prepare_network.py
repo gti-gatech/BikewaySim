@@ -117,7 +117,7 @@ def create_reverse_links(links):
     #flip start and end node ids
     links_rev = links.rename(columns={'A':'B','B':'A'})
 
-    #drop all oneway = true
+    #drop all oneway links (need to let users specify the oneway column)
     links_rev = links_rev[links_rev['oneway'] != 'yes']
 
     #HERE version
@@ -200,3 +200,32 @@ def link_costs(links:pd.DataFrame(),costs:dict,imp_name:str):
 
 def apply_costs(links,cost_dicts,export_fp):
     return
+
+def add_ref_ids_plain(links,nodes):
+    '''
+    This function adds reference columns to links from the nodes id column.
+    Assumes node columns are N, A, B whereas add_ref_ids uses the network name.
+    '''
+    for_matching = links.copy()
+    #make the first point the active geometry
+    for_matching['pt_geometry'] = for_matching.apply(start_node_geo, geom='geometry', axis=1)
+    for_matching.set_geometry('pt_geometry',inplace=True)
+    for_matching.drop(columns='geometry',inplace=True)
+    #find nearest node from starting node and add to column
+    links['A'] = ckdnearest(for_matching,nodes,return_dist=False)['N']
+    
+    #repeat for end point
+    for_matching = links.copy()
+    #make the first point the active geometry
+    for_matching['pt_geometry'] = for_matching.apply(end_node_geo, geom='geometry', axis=1)
+    for_matching.set_geometry('pt_geometry',inplace=True)
+    for_matching.drop(columns='geometry',inplace=True)
+    #find nearest node from starting node and add to column
+    links['B'] = ckdnearest(for_matching,nodes,return_dist=False)['N']
+
+    #check for missing reference ids
+    if links['A'].isnull().any() | links['B'].isnull().any():
+        print("There are missing reference ids")
+    else:
+        print("Reference IDs successfully added to links.")
+    return links

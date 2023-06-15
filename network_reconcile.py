@@ -1,6 +1,6 @@
-
 import geopandas as gpd
 import pandas as pd
+import osmnx as ox
 import numpy as np
 from shapely import wkt
 from shapely.wkt import dumps
@@ -10,17 +10,31 @@ from shapely.ops import LineString, Point, MultiPoint
 from pathlib import Path
 import geopandas as gpd
 
-def add_attributes(base_links, join_links, join_name, buffer_ft, overlap, dissolve=True):
-    
+def add_attributes(base_links:gpd.GeoDataFrame, join_links:gpd.GeoDataFrame, join_name:str, buffer_ft:float, overlap:float, bearing:float, dissolve=True):
+    '''
+    This function is used for adding attribute data from the join network to the base network. To do this,
+    join links are buffered (in feet). If dissolve is set to 'True', then the join links are dissolved by
+    its attributes (excluding the node id columns A, B, and A_B). After this, the buffered links are
+    intersected with the base links and attributes. The percentage overlap is calculated
+    (the intersected link length / original link length * 100). The bearing difference is also calculated
+    (between 0 and 180). Matches that are below the overlap and bearing difference threshold are removed.
+    These possible matches are then exported along with the base links with a new tempid column.
+
+    The possible matches can be exported to a GIS software or examined in Python to handle what join link
+    attributes get matched to the base links. This can be done on the basis of overlap maximization,
+    bearing difference minimization, attribute agreement (e.g., checking if street names match up),
+    or manually.
+    '''    
+
     #give base_links a temp column so each row has unique identifier
     # A_B doesn't always work because there might be duplicates from the split links step
     base_links['temp_ID'] = np.arange(base_links.shape[0]).astype(str)
     
-    #make a copy for intersecting
+    # make a copy for intersecting
     intersect = base_links.copy()
 
     #make intersect only tempid and geo
-    intersect = intersect[['temp_ID','geometry']]
+    #intersect = intersect[['temp_ID','geometry']]
 
     #calculate original base_links link length
     intersect['length'] = intersect.length
@@ -32,7 +46,7 @@ def add_attributes(base_links, join_links, join_name, buffer_ft, overlap, dissol
     buffered_links.geometry = buffered_links.buffer(buffer_ft)
     
     if dissolve:
-        #drop unique columns (no longer valid)
+        #drop unique id columns
         buffered_links.drop(columns=[f'{join_name}_A',f'{join_name}_B',f'{join_name}_A_B'],inplace=True)
 
         #dissolve by attributes in join links
@@ -42,30 +56,50 @@ def add_attributes(base_links, join_links, join_name, buffer_ft, overlap, dissol
         dissolved_links = buffered_links.dissolve(cols).reset_index()
     else:
         dissolved_links = buffered_links
-        
+
+    #calculate bearing (from start to end node) and add to base links and join links as new attribute
+    intersect['base_bearing'] = intersect.apply(lambda row: add_bearing(row),axis=1)
+    dissolved_links['join_bearing'] = dissolved_links.apply(lambda row: add_bearing(row),axis=1)
+
+    #if above 180 subtract 180 to account for links that have reversed directions
+    intersect.loc[intersect['base_bearing']>=180,'base_bearing'] = intersect['base_bearing'] - 180
+    dissolved_links.loc[dissolved_links['base_bearing']>180,'base_bearing'] = dissolved_links['base_bearing'] - 180
+
     #intersect join buffer and base links
-    overlapping_links = gpd.overlay(intersect, dissolved_links, how='intersection')
+    overlapping = gpd.overlay(intersect, dissolved_links, how='intersection')
     
     #re-calculate the link length to see which join buffers had the greatest overlap of base links
-    overlapping_links['percent_overlap'] = (overlapping_links.length / overlapping_links['length'] )
+    overlapping['percent_overlap'] = (overlapping.length / overlapping['length'] )
     
+    #find difference in bearing and return absolute value
+    overlapping['bearing_diff'] = (overlapping['base_bearing'] - overlapping['join_bearing']).abs() 
+
+    #drop matches below the overlap and bearing_diff threshhold
+    possible_matches = overlapping[(overlapping['percent_overlap'] > overlap) & (overlapping['bearing_diff'] < bearing)]
+
     #select matches with greatest link overlap
-    max_overlap_idx = overlapping_links.groupby('temp_ID')['percent_overlap'].idxmax().to_list()
+    #max_overlap_idx = overlapping.groupby('temp_ID')['percent_overlap'].idxmax().to_list()
     
     #get matching links from overlapping links
-    match_links = overlapping_links.loc[max_overlap_idx,:]
+    #match_links = overlapping.loc[max_overlap_idx,:]
     
-    #drop matches below the overlap threshhold
-    match_links = match_links[match_links['percent_overlap'] > overlap]
-
     #join back to base links
-    base_links = pd.merge(base_links,match_links.drop(columns=['geometry']),on='temp_ID',how='left')
+    #base_links = pd.merge(base_links,match_links.drop(columns=['geometry']),on='temp_ID',how='left')
 
     #drop added columns
-    base_links.drop(columns=['temp_ID','length'],inplace=True)
-    base_links.rename(columns={'percent_overlap':f'{join_name}_pct_overlap'},inplace=True)
+    #base_links.drop(columns=['temp_ID','length'],inplace=True)
+    #base_links.rename(columns={'percent_overlap':f'{join_name}_pct_overlap'},inplace=True)
     
-    return base_links
+    return base_links, possible_matches
+
+def add_bearing(row):
+    lat1 = row['geometry'].coords.xy[0][1]
+    lat2 = row['geometry'].coords.xy[-1][1]
+    lon1 = row['geometry'].coords.xy[0][0]
+    lon2 = row['geometry'].coords.xy[-1][0]
+    
+    return ox.bearing.calculate_bearing(lat1,lon1,lat2,lon2)
+
 
 def add_osm_attr(links,attr_fp):
     network = 'osm'

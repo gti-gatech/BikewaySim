@@ -18,43 +18,10 @@ from pathlib import Path
 
 from helper_functions import ckdnearest
 
-'''
-Notes:
-
-need to remove the point_geo and line_geo renaming or make it within all the functions so these can be used outside of the conflation process
-
-'''
-
-# Doing this automated isn't the optimal way
-#function for importing networks
-def import_network(network_name:str,link_type:str,study_area:str):    
-    '''
-    This function imports networks that were processed 
-    '''
-    
-    #expected relative fp
-    fp = Path.home()
-    
-    if os.path.exists(fp + 'links.geojson'):
-        links = gpd.read_file(fp + 'links.geojson')
-    else:
-        print(f'{network_name} network links file does not exist')
-
-    if os.path.exists(fp + 'nodes.geojson'):
-        nodes = gpd.read_file(fp + 'nodes.geojson')
-    else:
-        print(f'{network_name} network nodes file does not exist')
-     
-    #calculates the number of connecting links for each node for filtering purposes
-    num_links = links[f'{network_name}_A'].append(links[f'{network_name}_B']).value_counts()
-    num_links.name = 'num_links'
-    nodes = pd.merge(nodes,num_links,left_on=f'{network_name}_N',right_index=True)
- 
-    return links, nodes
-
 def rename_geo(gdf:gpd.GeoDataFrame,name:str,type:str):
     '''
-    For distinguishing geometry columns by network
+    For distinguishing geometry columns by network. Needed for some of the functions in this
+    module.
     '''
     if type == 'links':
         gdf = gdf.rename(columns={'geometry':f'{name}_line_geo'}).set_geometry(f'{name}_line_geo')
@@ -66,7 +33,7 @@ def rename_geo(gdf:gpd.GeoDataFrame,name:str,type:str):
 
 def unname_geo(gdf:gpd.GeoDataFrame,name:str,type:str):
     '''
-    For removing distinguishing geometry columns by network
+    For removing the geometry name columns from the rename_geo function
     '''
     if type == 'links':
         gdf = gdf.rename(columns={f'{name}_line_geo':'geometry'}).set_geometry('geometry')
@@ -76,30 +43,63 @@ def unname_geo(gdf:gpd.GeoDataFrame,name:str,type:str):
         raise Exception('Enter "links" or "nodes" for name')
     return gdf
 
-
-#initialize conflation
-#function creates columns in base links/nodes for join links/nodes ids to go when matched
-def initialize_base(base_links,base_nodes,join_name):
+def initialize_base(base_links:gpd.GeoDataFrame,base_nodes:gpd.GeoDataFrame,join_name:str):
+    '''
+    Adds empty columns to the base links and nodes to be populated with IDs from the join network.
+    '''
     #links
     base_links[f'{join_name}_A'] = None
     base_links[f'{join_name}_B'] = None
     base_links[f'{join_name}_A_B'] = None
-    
     #nodes
     base_nodes[f'{join_name}_N'] = None
     return base_links, base_nodes
 
+def match_nodes(base_nodes:gpd.GeoDataFrame, base_name:str, join_nodes:gpd.GeoDataFrame, join_name:str, tolerance_ft:float, remove_duplicates = True, export_error_lines = False, export_unmatched = False):
+    '''
+    Node Matching
+    This function matches nodes within a set tolerence (in CRS units) that are likely to be the same nodes.
+    This function is intended for matching road intersections or road termini since these are likely to be
+    in both networks. This function can be applied with an iteratively increasing tolerance if you're not
+    sure what's a good tolerance. At some point, the number of matched nodes will not increase by much.
 
-#%% new match_nodes that just appends matched nodes to base nodes
+    The match results will get printed out.
 
-# take in base and join nodes, and output just base nodes with added join nodes
+    NOTE: This function handles duplicate matches (i.e. when two or more nodes share a nearest node in the
+    other network) by selecting the one with the shorter match distance. The duplicates won't be rematched
+    unless you run the matching process again.
 
-def match_nodes(base_nodes, base_name, join_nodes, join_name, tolerance_ft, remove_duplicates = True, export_error_lines = False, export_unmatched = False):
-     
-    #check for nodes that have already been matched and remove them
+    When looping match function, feed outputs from previous like:
+    first match the nodes, can repeat this by adding in previously matched_nodes
+    tolerance_ft = 25
+    base_nodes = match_nodes(base_nodes,base_name,join_nodes,join_name,tolerance_ft)
+
+    #second iteration example with same tolerance
+    base_nodes = match_nodes(base_nodes,base_name,join_nodes,join_name,tolerance_ft)
+
+    #third iteration example with larger tolerance
+    tolerance_ft = 30
+    base_nodes = match_nodes(base_nodes,base_name,join_nodes,join_name,tolerance_ft)
+
+    Function Inputs
+    - base_nodes, base_name, join_nodes, join_name # self explanatory
+    - tolerance_ft: the match tolerance in units of feet
+    - prev_matched_nodes: geodataframe of the list of currently matched nodes, set to none for first run
+    - remove_duplicates: if set to 'True' (default), then remove duplicate matches. If set to false, duplicate
+    matches will be returned in the matched_nodes gdf.
+    - export_error_lines: if set to 'False', a geojson of linestrings visualizing the matches will be written.
+    - export_unmatched: if you want a geojson of the nodes that didn't match in each network set this to true
+    (False by default).
+
+    Function Outputs
+    - matched_nodes: a df of matched nodes, just the node ids.
+    - unmatched_base_nodes: a gdf of the base nodes that weren't matched.
+    - unmatched_join_nodes: a gdf of the join nodes that weren't matched. 
+    '''
+    #check for nodes that have already been matched and remove them from being matched
+    #does for both join and base network
     check_prev_matches = base_nodes[f'{join_name}_N'].isnull()
     base_matching = base_nodes[check_prev_matches]
-    
     check_prev_matches = join_nodes[f'{join_name}_N'].isin(base_nodes[f'{join_name}_N'])
     join_matching = join_nodes[-check_prev_matches]
     
@@ -185,18 +185,74 @@ def match_nodes(base_nodes, base_name, join_nodes, join_name, tolerance_ft, remo
     
     return base_nodes
 
+def split_lines_create_points(join_nodes:gpd.GeoDataFrame, join_name:str, base_links:gpd.GeoDataFrame, base_name:str, tolerance_ft:float):
+    '''
+    This function takes a set of nodes (join_nodes) and uses them to split a set of links (base_links) into
+    2 or more segments if they are within the tolerance_ft.
 
-#%% splitting base links by nearest joining nodes
+    NOTE: This may create way more new nodes/links than needed. Be sure to filter out nodes that you don't
+    want to use for splitting beforehand (like nodes that connect two links or dead ends).
 
+    It interpolates the closest point on a line from source line. Then it converts the line geometry from
+    shapely objects to well-known text (WKT). THe interpolated point is inserted and the line is turned into
+    a shapely MultiLineString. These MultiLineStrings are then broken up.
 
+    This function can be looped, if unsure what tolerance to use.
 
+    Make sure to any filtering beforehand if there are certain links that shouldn't be split or nodes that
+    shouldn't be used for splitting.
 
+    Function Inputs:
+    -join_nodes: gdf of nodes you want to use to split
+    -join_name: name of the join network
+    -base_links: links that you want to split
+    -base_name: name of the base network
+    -tolerance_ft: distance threshold for splitting (join nodes within this distance of a base link will be
+    use to split)
 
+    Function Outputs:
+    -split_lines: the new splitted base links
+    -split_points: the nodes on the base network that were used to split the base links
+    -unmatched_join_nodes: the join nodes that were not used to split the base links
+    
+    Also, for adding the new split links and nodes used to split the links be sure to run add_new_links_nodes
+    afterwards.
+    '''
+    base_links = rename_geo(base_links,base_name,'links')
+    join_nodes = rename_geo(join_nodes,join_name,'nodes')
 
+    #get CRS information
+    desired_crs = base_links.crs
+    
+    #note that these function use WKT to do the splitting rather than shapely geometry
+    split_points, line_to_split, unmatched_join_nodes = point_on_line(join_nodes, join_name, base_links, base_name, tolerance_ft) #finds the split points
+    print(f"{len(split_points.index)} {join_name} points matching to {len(line_to_split[f'{base_name}_A_B'].unique())} {base_name} links")
+    #print(f'There are {len(unmatched_join_nodes)} {join_name} nodes remaining')
+    
+    #splits the lines by nodes found in previous function
+    split_lines = split_by_nodes(line_to_split, split_points, base_name) 
+    print(f'{len(split_lines)} new lines created.')
+    
+    #drop the wkt columns and A_B column for points
+    split_points.drop(columns=[f'{base_name}_split_point_wkt',f'{base_name}_A_B'], inplace=True)
+    split_lines.drop(columns=[f'{base_name}_wkt'], inplace=True)
+    
+    #project gdfs
+    split_points.set_crs(desired_crs, inplace=True)
+    split_lines.set_crs(desired_crs, inplace=True)
 
-#this function finds the nearest point on a base link from every join node
-#this interpolated point will then be used to split the base link
+    #undo renaming
+    split_lines = unname_geo(split_lines,base_name,'links')
+    split_points = unname_geo(split_points,join_name+'_split','nodes')
+    unmatched_join_nodes = unname_geo(unmatched_join_nodes,join_name,'nodes')
+
+    return split_lines, split_points, unmatched_join_nodes
+
 def point_on_line(unmatched_join_nodes, join_name, base_links, base_name, tolerance_ft):
+    '''
+    Supporting function for split_lines_create_points. It interpolates the nearest point on
+    each base link from every join node.
+    '''
     split_points = pd.DataFrame() # dataframe for storing the corresponding interpolated point information 
     line_to_split = pd.DataFrame() # dataframe for storing the correspoding base link information
     
@@ -234,20 +290,17 @@ def point_on_line(unmatched_join_nodes, join_name, base_links, base_name, tolera
     
     return split_points, line_to_split, unmatched_join_nodes
 
-
-# add node to existing links
-# idea behind:
-## step 1:return the multistring as a string first (dataframe), since multistring does not split into 
-## individual linestring segment, but just add element to list of linestrings
-
-## step 2: expand list of linestring column into several rows, return a dataframe with more rows 
-
-## step 3: turn the dataframe into a geodataframe
-
-def get_linesegments(point, line):  # function to split line into MultiLineString (ATTENTION: not into individual segments, but to MultiLineString)
+def get_linesegments(point, line):
+     '''
+     Supporting function for split_lines_create_points. It splits the line into a MultiLineString.
+     '''
      return line.difference(point.buffer(1e-6)) #IMPORTANT: add a buffer here make sure it works
 
 def split_by_nodes(line_to_split, split_points, base_name):
+    '''
+    Supporting function for split_lines_create_points.
+    '''
+    
     ab_list = split_points[f"{base_name}_A_B"].unique().tolist()
     line_to_split = line_to_split.drop_duplicates(subset = [f"{base_name}_A_B"]) # multiple points could line on the same link, drop duplicates first
     df_split = pd.DataFrame(columns = {f"{base_name}_A_B",f"{base_name}_wkt"}) # dataframe for storing splitted multistring
@@ -272,154 +325,19 @@ def split_by_nodes(line_to_split, split_points, base_name):
     
     return df_split
 
-# def split_lines_create_points(unmatched_join_nodes, join_name, base_links, base_name, tolerance_ft, export = False):
-    
-#     #get CRS information
-#     desired_crs = base_links.crs
-    
-#     #note that these function use WKT to do the splitting rather than shapely geometry
-#     split_points, line_to_split, unmatched_join_nodes = point_on_line(unmatched_join_nodes, join_name, base_links, base_name, tolerance_ft) #finds the split points
-#     print(f"There are {len(split_points.index)} {join_name} points matching to {len(line_to_split[f'{base_name}_A_B'].unique())} {base_name} links")
-#     print(f'There are {len(unmatched_join_nodes)} {join_name} nodes remaining')
-    
-#     #splits the lines by nodes found in previous function
-#     split_lines = split_by_nodes(line_to_split, split_points, base_name) 
-#     print(f'There were {len(split_lines)} new lines created.')
-    
-#     #drop the wkt columns and A_B column for points
-#     split_points.drop(columns=[f'{base_name}_split_point_wkt',f'{base_name}_A_B'], inplace=True)
-#     split_lines.drop(columns=[f'{base_name}_wkt'], inplace=True)
-    
-#     #project gdfs
-#     split_points.set_crs(desired_crs, inplace=True)
-#     split_lines.set_crs(desired_crs, inplace=True)
-
-#     if export == True:
-#         #write these to file
-#         split_lines.to_file("processed_shapefiles/conflation/line_splitting/split_lines.geojson", driver = "GeoJSON")
-#         split_points.to_file("processed_shapefiles/conflation/line_splitting/split_points.geojson", driver = "GeoJSON")
-
-#     return split_lines, split_points, unmatched_join_nodes
-
-
-# function to add new nodes/links
-def add_new_links_nodes(base_links, base_nodes, new_links, new_nodes, base_name):
-
-    #remove links that were splitted
-    mask = -base_links[f'{base_name}_A_B'].isin(new_links[f'{base_name}_A_B'])
-    base_links = base_links[mask]
-    
-    #add new links
-    base_links = base_links.append(new_links)
-     
-    #rename geo col
-    new_nodes = new_nodes.rename(columns={f'{base_name}_split_point_geo':f'{base_name}_point_geo'}).set_geometry(f'{base_name}_point_geo')
-    
-    #add split nodes to nodes with the here match
-    base_nodes = base_nodes.append(new_nodes)
-    
-    return base_links, base_nodes
-
-#%% new code
-
-def split_lines_create_points(join_nodes, join_name, base_links, base_name, tolerance_ft, export = False):
-    '''
-    This function takes a set of nodes (join_nodes) and uses them to split a set of links (base_links) into 2 or more segments
-    if they are within the tolerance_ft.
-
-    Make sure to any filtering beforehand if there are certain links that shouldn't be split or nodes that shouldn't be used for
-    splitting.
-
-    Also, for adding the new split links and nodes used to split the links be sure to run add_new_links_nodes afterwards.
-    '''
-    base_links = rename_geo(base_links,base_name,'links')
-    join_nodes = rename_geo(join_nodes,join_name,'nodes')
-
-    #get CRS information
-    desired_crs = base_links.crs
-    
-    #note that these function use WKT to do the splitting rather than shapely geometry
-    split_points, line_to_split, unmatched_join_nodes = point_on_line(join_nodes, join_name, base_links, base_name, tolerance_ft) #finds the split points
-    print(f"{len(split_points.index)} {join_name} points matching to {len(line_to_split[f'{base_name}_A_B'].unique())} {base_name} links")
-    #print(f'There are {len(unmatched_join_nodes)} {join_name} nodes remaining')
-    
-    #splits the lines by nodes found in previous function
-    split_lines = split_by_nodes(line_to_split, split_points, base_name) 
-    print(f'{len(split_lines)} new lines created.')
-    
-    #drop the wkt columns and A_B column for points
-    split_points.drop(columns=[f'{base_name}_split_point_wkt',f'{base_name}_A_B'], inplace=True)
-    split_lines.drop(columns=[f'{base_name}_wkt'], inplace=True)
-    
-    #project gdfs
-    split_points.set_crs(desired_crs, inplace=True)
-    split_lines.set_crs(desired_crs, inplace=True)
-
-    #undo renaming
-    split_lines = unname_geo(split_lines,base_name,'links')
-    split_points = unname_geo(split_points,join_name+'_split','nodes')
-    unmatched_join_nodes = unname_geo(unmatched_join_nodes,join_name,'nodes')
-
-    return split_lines, split_points, unmatched_join_nodes
-
-# function to add new nodes/links
 def add_split_links(base_links, new_links, base_name):
     '''
-    Take the outputs from split_lines_create_points and:
-    - replace the link that has been splitted
+    Take the split_lines output from the split_lines_create_points function and replaces the link that has
+    been splitted.
     '''
-
     #remove links that were splitted
     mask = -base_links[f'{base_name}_A_B'].isin(new_links[f'{base_name}_A_B'])
     base_links = base_links[mask]
     
     #add new links
-    base_links = pd.concat([base_links,new_links])
+    base_links = pd.concat([base_links,new_links],ignore_index=True)
      
     return base_links
-
-
-#%%
-
-# def add_attributes(base_links, base_name, join_links, join_name, buffer_ft):
-     
-#     #give base_links a temp column so each row has unique identifyer
-#     base_links['temp_N'] = np.arange(base_links.shape[0]).astype(str)
-    
-#     #buffer base links by 30 ft (or whatever the projected coord unit is)
-#     base_links['buffer_geo'] = base_links.buffer(buffer_ft)
-#     base_links = base_links.set_geometry('buffer_geo')
-    
-#     #export buffer for examination
-#     base_links.drop(columns={f'{base_name}_line_geo'}).to_file(rf'Processed_Shapefiles/conflation/add_attributes/{base_name}_buffer.geojson', driver = 'GeoJSON')
-    
-#     #calculate initial length of join links
-#     join_links['original_length'] = join_links.length
-    
-#     #perform overlay with join links
-#     overlapping_links = gpd.overlay(join_links, base_links, how='intersection')
-    
-#     #overlap length
-#     overlapping_links['overlap_length'] = overlapping_links.length 
-    
-    
-#     #for each base link find join link with greatest length overlap
-#     overlapping_links = overlapping_links.loc[overlapping_links.groupby('temp_N')['overlap_length'].idxmax()]
-    
-#     #merge the join_A_B column to base_links by temp ID
-#     base_links = pd.merge(base_links, overlapping_links[['temp_N',f'{join_name}_A_B']], on = 'temp_N', how = 'left')
-    
-#     #clean up base_links
-#     base_links.drop(columns=['temp_N','buffer_geo'], inplace = True)
-    
-#     #reset active geo
-#     base_links = base_links.set_geometry(f'{base_name}_line_geo')
-
-#     #export final result
-#     base_links.to_file(rf'Processed_Shapefiles/conflation/add_attributes/{base_name}_joined.geojson', driver = 'GeoJSON')
-
-#     return base_links
-
 
 def add_rest_of_features(base_links,base_nodes,base_name,join_links,join_nodes,join_name):
     
@@ -448,74 +366,76 @@ def add_rest_of_features(base_links,base_nodes,base_name,join_links,join_nodes,j
     
     return base_links, base_nodes
  
-def merge_diff_networks(base_links, base_nodes, base_type, join_links, join_nodes, join_type, tolerance_ft):
-    
-    #notes
-    #merging network could have the same nodes
-    #don't mess with ref id till end
-    #need to consider how many ids there will be
-    
-    #first find nodes that are already present and don't add them
-    
-    #get network names for each network
-    base_cols = list(base_nodes.columns)
-    base_Ns = [base_cols for base_cols in base_cols if "_N" in base_cols]
-    
-    join_cols = list(join_nodes.columns)
-    join_Ns = [join_cols for join_cols in join_cols if "_N" in join_cols]
-    
-    #get list of common names between networks
-    common_Ns = [base_Ns for base_Ns in base_Ns if base_Ns in join_Ns]
-    
-    #remove join_nodes that are in base_nodes
-    initial_nodes = len(join_nodes)
-    
-    for name in common_Ns:
-        join_nodes = join_nodes[-join_nodes[name].isin(base_nodes[name])]
-    
-    final_nodes = len(join_nodes)
-    print(f'{initial_nodes - final_nodes} nodes already in the base network')
-    
-    #add rest of join nodes to base nodes
-    base_nodes = base_nodes.append(join_nodes)
-    
-    #get geo names
-    base_line_geo = base_links.geometry.name
-    base_point_geo = base_nodes.geometry.name
-    join_line_geo = join_links.geometry.name
-    join_point_geo = join_nodes.geometry.name
-    
-    #call the match nodes function to form connections between nodes
-    base_nodes_to_match = base_nodes.add_suffix(f'_{base_type}').set_geometry(f'{base_point_geo}_{base_type}')
-    join_nodes_to_match = join_nodes.add_suffix(f'_{join_type}').set_geometry(f'{join_point_geo}_{join_type}')
-    
-    print(base_nodes_to_match.geometry.isnull().any())
-    print(join_nodes_to_match.isnull().any())
-    
-    #this isn't working
-    #connections = ckdnearest(base_nodes_to_match,join_nodes_to_match)
-    #connections = connections[connections['dist'] <= tolerance_ft]
+# DEPRECATED CODE
 
-    #only keep connections if there is not already a connection in respective column
-    #for name in common_Ns:
-       # rem_cond = connections[f'{name}_{base_type}'] == connections[f'{name}_{join_type}']
-       # connections = connections[-rem_cond]
+# def merge_diff_networks(base_links, base_nodes, base_type, join_links, join_nodes, join_type, tolerance_ft):
+    
+#     #notes
+#     #merging network could have the same nodes
+#     #don't mess with ref id till end
+#     #need to consider how many ids there will be
+    
+#     #first find nodes that are already present and don't add them
+    
+#     #get network names for each network
+#     base_cols = list(base_nodes.columns)
+#     base_Ns = [base_cols for base_cols in base_cols if "_N" in base_cols]
+    
+#     join_cols = list(join_nodes.columns)
+#     join_Ns = [join_cols for join_cols in join_cols if "_N" in join_cols]
+    
+#     #get list of common names between networks
+#     common_Ns = [base_Ns for base_Ns in base_Ns if base_Ns in join_Ns]
+    
+#     #remove join_nodes that are in base_nodes
+#     initial_nodes = len(join_nodes)
+    
+#     for name in common_Ns:
+#         join_nodes = join_nodes[-join_nodes[name].isin(base_nodes[name])]
+    
+#     final_nodes = len(join_nodes)
+#     print(f'{initial_nodes - final_nodes} nodes already in the base network')
+    
+#     #add rest of join nodes to base nodes
+#     base_nodes = base_nodes.append(join_nodes)
+    
+#     #get geo names
+#     base_line_geo = base_links.geometry.name
+#     base_point_geo = base_nodes.geometry.name
+#     join_line_geo = join_links.geometry.name
+#     join_point_geo = join_nodes.geometry.name
+    
+#     #call the match nodes function to form connections between nodes
+#     base_nodes_to_match = base_nodes.add_suffix(f'_{base_type}').set_geometry(f'{base_point_geo}_{base_type}')
+#     join_nodes_to_match = join_nodes.add_suffix(f'_{join_type}').set_geometry(f'{join_point_geo}_{join_type}')
+    
+#     print(base_nodes_to_match.geometry.isnull().any())
+#     print(join_nodes_to_match.isnull().any())
+    
+#     #this isn't working
+#     #connections = ckdnearest(base_nodes_to_match,join_nodes_to_match)
+#     #connections = connections[connections['dist'] <= tolerance_ft]
+
+#     #only keep connections if there is not already a connection in respective column
+#     #for name in common_Ns:
+#        # rem_cond = connections[f'{name}_{base_type}'] == connections[f'{name}_{join_type}']
+#        # connections = connections[-rem_cond]
      
-    #add all the links
-    base_links = base_links.append(join_links)
+#     #add all the links
+#     base_links = base_links.append(join_links)
     
-    #merge the geometry columns into one
-    base_links[base_links.geometry.name] = base_links.apply(
-           lambda row: row[join_links.geometry.name] if row[base_links.geometry.name] is None else row[base_links.geometry.name], axis = 1)
+#     #merge the geometry columns into one
+#     base_links[base_links.geometry.name] = base_links.apply(
+#            lambda row: row[join_links.geometry.name] if row[base_links.geometry.name] is None else row[base_links.geometry.name], axis = 1)
     
-    base_nodes[base_nodes.geometry.name] = base_nodes.apply(
-           lambda row: row[join_nodes.geometry.name] if row[base_nodes.geometry.name] is None else row[base_nodes.geometry.name], axis = 1)
+#     base_nodes[base_nodes.geometry.name] = base_nodes.apply(
+#            lambda row: row[join_nodes.geometry.name] if row[base_nodes.geometry.name] is None else row[base_nodes.geometry.name], axis = 1)
     
-    #drop the excess geo column, make sure base is set to active geometry
-    base_links = base_links.drop(columns=[join_line_geo]).set_geometry(base_line_geo)
-    base_nodes = base_nodes.drop(columns=[join_point_geo]).set_geometry(base_point_geo)
+#     #drop the excess geo column, make sure base is set to active geometry
+#     base_links = base_links.drop(columns=[join_line_geo]).set_geometry(base_line_geo)
+#     base_nodes = base_nodes.drop(columns=[join_point_geo]).set_geometry(base_point_geo)
 
-    return base_links, base_nodes#, connections
+#     return base_links, base_nodes#, connections
    
 # def add_reference_Ns(links, nodes):
 
@@ -584,24 +504,139 @@ def merge_diff_networks(base_links, base_nodes, base_type, join_links, join_node
             
 #     return links
 
-def fin_subnetwork(final_links,final_nodes,base_name,join_name):
-    comb = base_name + join_name
+# def fin_subnetwork(final_links,final_nodes,base_name,join_name):
+#     comb = base_name + join_name
     
-    final_links.rename(columns={f'{base_name}_line_geo':f'{comb}_line_geo'},inplace=True)
-    final_links.set_geometry(f'{comb}_line_geo',inplace=True)
-    final_links[f'{comb}_A_B'] = np.nan
-    final_links[f'{comb}_A_B'] = final_links[f'{comb}_A_B'].fillna(final_links[f'{base_name}_A_B'])
-    final_links[f'{comb}_A_B'] = final_links[f'{comb}_A_B'].fillna(final_links[f'{join_name}_A_B'])
+#     final_links.rename(columns={f'{base_name}_line_geo':f'{comb}_line_geo'},inplace=True)
+#     final_links.set_geometry(f'{comb}_line_geo',inplace=True)
+#     final_links[f'{comb}_A_B'] = np.nan
+#     final_links[f'{comb}_A_B'] = final_links[f'{comb}_A_B'].fillna(final_links[f'{base_name}_A_B'])
+#     final_links[f'{comb}_A_B'] = final_links[f'{comb}_A_B'].fillna(final_links[f'{join_name}_A_B'])
     
-    final_nodes.rename(columns={f'{base_name}_point_geo':f'{comb}_point_geo'},inplace=True)
-    final_nodes.set_geometry(f'{comb}_point_geo',inplace=True)
-    final_nodes[f'{comb}_N'] = np.nan
-    final_nodes[f'{comb}_N'] = final_nodes[f'{comb}_N'].fillna(final_nodes[f'{base_name}_N'])
-    final_nodes[f'{comb}_N'] = final_nodes[f'{comb}_N'].fillna(final_nodes[f'{join_name}_N'])
+#     final_nodes.rename(columns={f'{base_name}_point_geo':f'{comb}_point_geo'},inplace=True)
+#     final_nodes.set_geometry(f'{comb}_point_geo',inplace=True)
+#     final_nodes[f'{comb}_N'] = np.nan
+#     final_nodes[f'{comb}_N'] = final_nodes[f'{comb}_N'].fillna(final_nodes[f'{base_name}_N'])
+#     final_nodes[f'{comb}_N'] = final_nodes[f'{comb}_N'].fillna(final_nodes[f'{join_name}_N'])
     
-    final_links = final_links.reset_index(drop=True)
-    final_nodes = final_nodes.reset_index(drop=True)
+#     final_links = final_links.reset_index(drop=True)
+#     final_nodes = final_nodes.reset_index(drop=True)
     
-    return final_links, final_nodes
-    
+#     return final_links, final_nodes
 
+# def add_attributes(base_links, base_name, join_links, join_name, buffer_ft):
+     
+#     #give base_links a temp column so each row has unique identifyer
+#     base_links['temp_N'] = np.arange(base_links.shape[0]).astype(str)
+    
+#     #buffer base links by 30 ft (or whatever the projected coord unit is)
+#     base_links['buffer_geo'] = base_links.buffer(buffer_ft)
+#     base_links = base_links.set_geometry('buffer_geo')
+    
+#     #export buffer for examination
+#     base_links.drop(columns={f'{base_name}_line_geo'}).to_file(rf'Processed_Shapefiles/conflation/add_attributes/{base_name}_buffer.geojson', driver = 'GeoJSON')
+    
+#     #calculate initial length of join links
+#     join_links['original_length'] = join_links.length
+    
+#     #perform overlay with join links
+#     overlapping_links = gpd.overlay(join_links, base_links, how='intersection')
+    
+#     #overlap length
+#     overlapping_links['overlap_length'] = overlapping_links.length 
+    
+    
+#     #for each base link find join link with greatest length overlap
+#     overlapping_links = overlapping_links.loc[overlapping_links.groupby('temp_N')['overlap_length'].idxmax()]
+    
+#     #merge the join_A_B column to base_links by temp ID
+#     base_links = pd.merge(base_links, overlapping_links[['temp_N',f'{join_name}_A_B']], on = 'temp_N', how = 'left')
+    
+#     #clean up base_links
+#     base_links.drop(columns=['temp_N','buffer_geo'], inplace = True)
+    
+#     #reset active geo
+#     base_links = base_links.set_geometry(f'{base_name}_line_geo')
+
+#     #export final result
+#     base_links.to_file(rf'Processed_Shapefiles/conflation/add_attributes/{base_name}_joined.geojson', driver = 'GeoJSON')
+
+#     return base_links
+
+
+# #function for importing networks
+# def import_network(network_name:str,link_type:str,study_area:str):    
+#     '''
+#     This function imports networks that were processed 
+#     '''
+    
+#     #expected relative fp
+#     fp = Path.home()
+    
+#     if os.path.exists(fp + 'links.geojson'):
+#         links = gpd.read_file(fp + 'links.geojson')
+#     else:
+#         print(f'{network_name} network links file does not exist')
+
+#     if os.path.exists(fp + 'nodes.geojson'):
+#         nodes = gpd.read_file(fp + 'nodes.geojson')
+#     else:
+#         print(f'{network_name} network nodes file does not exist')
+     
+#     #calculates the number of connecting links for each node for filtering purposes
+#     num_links = links[f'{network_name}_A'].append(links[f'{network_name}_B']).value_counts()
+#     num_links.name = 'num_links'
+#     nodes = pd.merge(nodes,num_links,left_on=f'{network_name}_N',right_index=True)
+ 
+#     return links, nodes
+
+
+# def split_lines_create_points(unmatched_join_nodes, join_name, base_links, base_name, tolerance_ft, export = False):
+    
+#     #get CRS information
+#     desired_crs = base_links.crs
+    
+#     #note that these function use WKT to do the splitting rather than shapely geometry
+#     split_points, line_to_split, unmatched_join_nodes = point_on_line(unmatched_join_nodes, join_name, base_links, base_name, tolerance_ft) #finds the split points
+#     print(f"There are {len(split_points.index)} {join_name} points matching to {len(line_to_split[f'{base_name}_A_B'].unique())} {base_name} links")
+#     print(f'There are {len(unmatched_join_nodes)} {join_name} nodes remaining')
+    
+#     #splits the lines by nodes found in previous function
+#     split_lines = split_by_nodes(line_to_split, split_points, base_name) 
+#     print(f'There were {len(split_lines)} new lines created.')
+    
+#     #drop the wkt columns and A_B column for points
+#     split_points.drop(columns=[f'{base_name}_split_point_wkt',f'{base_name}_A_B'], inplace=True)
+#     split_lines.drop(columns=[f'{base_name}_wkt'], inplace=True)
+    
+#     #project gdfs
+#     split_points.set_crs(desired_crs, inplace=True)
+#     split_lines.set_crs(desired_crs, inplace=True)
+
+#     if export == True:
+#         #write these to file
+#         split_lines.to_file("processed_shapefiles/conflation/line_splitting/split_lines.geojson", driver = "GeoJSON")
+#         split_points.to_file("processed_shapefiles/conflation/line_splitting/split_points.geojson", driver = "GeoJSON")
+
+#     return split_lines, split_points, unmatched_join_nodes
+
+
+# def add_new_links_nodes(base_links, base_nodes, new_links, new_nodes, base_name):
+#     '''
+#     Use this function with the split_lines_create_points function outputs to add the new
+#     split links and nodes to the base network links and nodes.
+#     '''
+#     #remove links that were splitted
+#     mask = -base_links[f'{base_name}_A_B'].isin(new_links[f'{base_name}_A_B'])
+#     base_links = base_links[mask]
+    
+#     #add new links
+#     base_links = base_links.append(new_links)
+     
+#     #rename geo col
+#     new_nodes = new_nodes.rename(columns={f'{base_name}_split_point_geo':f'{base_name}_point_geo'}).set_geometry(f'{base_name}_point_geo')
+    
+#     #add split nodes to nodes with the here match
+#     base_nodes = base_nodes.append(new_nodes)
+    
+#     return base_links, base_nodes

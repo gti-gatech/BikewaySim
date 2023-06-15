@@ -230,16 +230,12 @@ def impedance_change(imp,improved,tazs,impedance_col):
     return by_taz
 
 
-def make_bikeshed(links_c,nodes,taz,ods,radius,buffer_size,impedance_col):
+def make_bikeshed(links_c,nodes,origin,radius,buffer_size,impedance_col):
     '''
     Get the bikeshed for select tazs.
     '''
 
     links = links_c.copy()
-
-    #get network node
-    origin = taz
-    #origin = ods.loc[ods['ori_id']==taz,'o_node'].unique().item()
 
     #turn links into directed graph
     DGo = create_graph(links,impedance_col)
