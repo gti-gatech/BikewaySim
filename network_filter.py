@@ -46,7 +46,7 @@ def import_study_area(settings):
         (settings['output_fp'] / Path(settings['studyarea_name'])).mkdir()
 
     #export
-    studyarea.to_file((settings['output_fp'] / Path(settings['studyarea_name'] / Path('filtered.gpkg'))),layer='studyarea')
+    studyarea.to_file((settings['output_fp'] / settings['studyarea_name'] / 'base_layers.gpkg'),layer='studyarea')
 
     return studyarea
 
@@ -472,6 +472,7 @@ def summary(settings):
     for network in layers:
         links = gpd.read_file(output_fp / Path(f'{studyarea_name}/filtered.gpkg'),layer=network)
     
+        #get network name
         network_name = network.split('_')[0]
     
         #how many links

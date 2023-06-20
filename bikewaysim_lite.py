@@ -76,6 +76,10 @@ def snap_ods_to_network(od_pairs:pd.DataFrame,df_nodes:gpd.GeoDataFrame):
     return od_pairs
     
 def create_graph(links,impedance_col):
+    '''
+    Creates weighted directed network graph
+    '''
+    
     DGo = nx.DiGraph()  # create directed graph
     for ind, row2 in links.iterrows():
         DGo.add_weighted_edges_from([(str(row2['A']), str(row2['B']), float(row2[impedance_col]))],weight=impedance_col)   
@@ -152,6 +156,9 @@ def find_shortest(links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame,ods_:pd.DataFram
     return ods, links, nodes
 
 def btw_centrality(all_nodes:dict,all_paths:dict,links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame, impedance_col):
+    '''
+    Calculates link betweenness centrality
+    '''
 
     #calculate betweenness centrality
     node_btw_centrality = pd.Series(list(chain(*[all_nodes[key] for key in all_nodes.keys()]))).value_counts()
@@ -172,6 +179,9 @@ def btw_centrality(all_nodes:dict,all_paths:dict,links:gpd.GeoDataFrame,nodes:gp
     return links, nodes
 
 def add_geo(all_paths:dict,links:gpd.GeoDataFrame):
+    '''
+    Takes an edge list and returns a multilinestring of the entire trip for GIS
+    '''
 
     geos_dict = dict(zip(links['A_B'],links['geometry']))
     
@@ -232,7 +242,7 @@ def impedance_change(imp,improved,tazs,impedance_col):
 
 def make_bikeshed(links_c,nodes,origin,radius,buffer_size,impedance_col):
     '''
-    Get the bikeshed for select tazs.
+    Get the bikeshed for an origin
     '''
 
     links = links_c.copy()
@@ -260,12 +270,13 @@ def make_bikeshed(links_c,nodes,origin,radius,buffer_size,impedance_col):
     df_dup = drop_duplicate_links(bikeshed)
     
     print(f'---{taz}---')
-    print(f'Bikeshed Network Miles: {df_dup.length.sum()/5280}')
-    print(f'Bikeshed Size (square miles w/{radius} ft access distance): {df_dup.buffer(buffer_size).area.sum()/5280/5280}')    
+    print(f'Bikeshed Network Miles: {np.round(df_dup.length.sum()/5280,1)}')
+    print(f'Bikeshed Size (square miles w/{radius} ft access distance): {np.round(df_dup.buffer(buffer_size).area.sum()/5280/5280,1)}')    
 
     return bikeshed, bikeshed_node
 
 def drop_duplicate_links(links):
+    #drops the additional two way link needed for network routing
     df_dup = pd.DataFrame(np.sort(links[["A","B"]], axis=1), columns=["A","B"])
     df_dup.drop_duplicates(inplace=True)
     merged = pd.merge(links,df_dup,how='inner', left_index = True, right_index = True, suffixes=(None,'_drop')).drop(columns={'A_drop','B_drop'})
