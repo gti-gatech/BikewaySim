@@ -153,6 +153,9 @@ def filter_to_general(settings:dict,network_dict:dict):
     if network_name == 'osm':
         print(f'Cleaning measures applied for {network_name}...')
         
+        #remove self loops
+        links = links[links['osm_A']!=links['osm_B']]
+
         #remove restricted access roads + sidewalks
         restr_access = links['highway'].isin(['motorway','motorway_link'])
         links = links[-restr_access]

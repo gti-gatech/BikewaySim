@@ -10,20 +10,35 @@ from shapely.ops import LineString, Point, MultiPoint
 from pathlib import Path
 import geopandas as gpd
 
-def add_attributes(base_links:gpd.GeoDataFrame, join_links:gpd.GeoDataFrame, join_name:str, buffer_ft:float, overlap:float, bearing:float, dissolve=True):
+def add_attributes(base_links:gpd.GeoDataFrame, join_links:gpd.GeoDataFrame, join_name:str, buffer_ft:float, bearing_diff:bool, dissolve:bool):
     '''
     This function is used for adding attribute data from the join network to the base network. To do this,
-    join links are buffered (in feet). If dissolve is set to 'True', then the join links are dissolved by
-    its attributes (excluding the node id columns A, B, and A_B). After this, the buffered links are
-    intersected with the base links and attributes. The percentage overlap is calculated
-    (the intersected link length / original link length * 100). The bearing difference is also calculated
-    (between 0 and 180). Matches that are below the overlap and bearing difference threshold are removed.
-    These possible matches are then exported along with the base links with a new tempid column.
+    join links are buffered (in feet).
+    
+    If bearing_diff is set to true, then the bearing for each link in
+    both the base and join links is calculated and rounded to the 5 degrees (the add_bearing function comes
+    from osmnx). Bearing angle that are above 180 degrees are substracted by 180 to account for when links in
+    either network have been drawn in a different direction.
 
-    The possible matches can be exported to a GIS software or examined in Python to handle what join link
-    attributes get matched to the base links. This can be done on the basis of overlap maximization,
-    bearing difference minimization, attribute agreement (e.g., checking if street names match up),
-    or manually.
+    If dissolve is set to 'True', then the join links are dissolved by
+    its attributes (excluding the node id columns A, B, and A_B).
+    
+    The buffered links are then intersected with the base links. Two metrics are calculated. 
+    
+    Percentage Overlap = the intersected link length / original link length * 100
+    
+    Bearing Difference = absolute_value(base_bearing_angle - join_bearing_angle)
+     
+    Percentage overlap will be between 0 and 1, and bearing difference will be between 0 and 180. These
+    intersected links represent the potential matches between the base and join links and can be exported
+    to a GIS software or examined in Python to handle what join link attributes get matched to the base
+    links. This can be done on the basis of overlap maximization, bearing difference minimization, attribute
+    agreement (e.g., checking if street names match up), or it can be done manually.
+    
+    The outputs of this function are the base links with an added column called 'temp_ID' and the potential
+    matches. Once the potential matches have been filtered they can be rejoined to the base links using the
+    'temp_ID' column. Make sure to drop the geometry attribute from the potential matches geodataframe.
+      
     '''    
 
     #give base_links a temp column so each row has unique identifier
@@ -34,17 +49,31 @@ def add_attributes(base_links:gpd.GeoDataFrame, join_links:gpd.GeoDataFrame, joi
     intersect = base_links.copy()
 
     #make intersect only tempid and geo
-    #intersect = intersect[['temp_ID','geometry']]
+    intersect = intersect[['temp_ID','geometry']]
 
     #calculate original base_links link length
     intersect['length'] = intersect.length
     
-    #create copy of join links to use for bufferring
+    #create copy of join links to use for dissolving
     buffered_links = join_links.copy()
-    
+
+    if bearing_diff:
+        #calculate bearing (from start to end node) and add to base links and join links as new attribute
+        intersect['base_bearing'] = intersect.apply(lambda row: add_bearing(row),axis=1)
+        buffered_links['join_bearing'] = buffered_links.apply(lambda row: add_bearing(row),axis=1)
+
+        #if above 180 subtract 180 to account for links that have reversed directions
+        intersect.loc[intersect['base_bearing']>=180,'base_bearing'] = intersect['base_bearing'] - 180
+        buffered_links.loc[buffered_links['join_bearing']>180,'join_bearing'] = buffered_links['join_bearing'] - 180
+        
+        #round to nearest 5 degrees
+        intersect['base_bearing'] = (intersect['base_bearing'] / 5).round().astype(int) * 5
+        buffered_links['join_bearing'] = (buffered_links['join_bearing'] / 5).round().astype(int) * 5
+
     #buffer the join links by tolerance_ft
     buffered_links.geometry = buffered_links.buffer(buffer_ft)
     
+    #paired with bearing then will only dissolve links if they're the same direction
     if dissolve:
         #drop unique id columns
         buffered_links.drop(columns=[f'{join_name}_A',f'{join_name}_B',f'{join_name}_A_B'],inplace=True)
@@ -57,14 +86,6 @@ def add_attributes(base_links:gpd.GeoDataFrame, join_links:gpd.GeoDataFrame, joi
     else:
         dissolved_links = buffered_links
 
-    #calculate bearing (from start to end node) and add to base links and join links as new attribute
-    intersect['base_bearing'] = intersect.apply(lambda row: add_bearing(row),axis=1)
-    dissolved_links['join_bearing'] = dissolved_links.apply(lambda row: add_bearing(row),axis=1)
-
-    #if above 180 subtract 180 to account for links that have reversed directions
-    intersect.loc[intersect['base_bearing']>=180,'base_bearing'] = intersect['base_bearing'] - 180
-    dissolved_links.loc[dissolved_links['base_bearing']>180,'base_bearing'] = dissolved_links['base_bearing'] - 180
-
     #intersect join buffer and base links
     overlapping = gpd.overlay(intersect, dissolved_links, how='intersection')
     
@@ -75,7 +96,7 @@ def add_attributes(base_links:gpd.GeoDataFrame, join_links:gpd.GeoDataFrame, joi
     overlapping['bearing_diff'] = (overlapping['base_bearing'] - overlapping['join_bearing']).abs() 
 
     #drop matches below the overlap and bearing_diff threshhold
-    possible_matches = overlapping[(overlapping['percent_overlap'] > overlap) & (overlapping['bearing_diff'] < bearing)]
+    #possible_matches = overlapping[(overlapping['percent_overlap'] > overlap) & (overlapping['bearing_diff'] < bearing)]
 
     #select matches with greatest link overlap
     #max_overlap_idx = overlapping.groupby('temp_ID')['percent_overlap'].idxmax().to_list()
@@ -90,7 +111,7 @@ def add_attributes(base_links:gpd.GeoDataFrame, join_links:gpd.GeoDataFrame, joi
     #base_links.drop(columns=['temp_ID','length'],inplace=True)
     #base_links.rename(columns={'percent_overlap':f'{join_name}_pct_overlap'},inplace=True)
     
-    return base_links, possible_matches
+    return base_links, overlapping
 
 def add_bearing(row):
     lat1 = row['geometry'].coords.xy[0][1]
