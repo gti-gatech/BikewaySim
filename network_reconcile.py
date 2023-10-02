@@ -143,13 +143,12 @@ def add_osm_attr(links,attr_fp):
     #get all bike specific columns (find features with cycle, foot, or bike in tags but not motorcycle)
     bike_columns = [x for x in links.columns.to_list() if (('cycle' in x) | ('bike' in x)) & ('motorcycle' not in x)]
     foot_columns = [x for x in links.columns.to_list() if ('foot' in x)]
-    bike_columns = bike_columns + foot_columns + ['lit']
+    bike_columns = bike_columns + foot_columns
     bl_cond = ((links[bike_columns] == 'lane').any(axis=1)) & (links['highway'] != 'cycleway')
     #bl.to_file(Path.home() / 'Downloads/testing.gpkg', layer = 'bls')
 
     #anything that contains lane is a bike lane
     links.loc[bl_cond,network+'_bl'] = 1
-
 
     #find protected bike lanes
     pbl_cond = (links['highway'] == 'cycleway') | links['highway_1']=='cycleway'#& (links['foot'] == 'no')
@@ -164,12 +163,12 @@ def add_osm_attr(links,attr_fp):
     if (links[[network+'_mu',network+'_pbl',network+'_bl']].sum(axis=1) > 1).any():
         print('more than one bike facility detected')
 
-    #speed limit
+    #speed limit (come back to this)
     #change nones to NaN
     links['maxspeed'] = pd.to_numeric(links['maxspeed'],errors='coerce').fillna(links['maxspeed'])
-
-    #covert to ints
-    func = lambda x: int(str.split(x,' ')[0]) if type(x) == str else (np.nan if x == None else int(x))
+    
+    #covert strings to numbers (gets rid of units, but won't work if no numbers present)
+    func = lambda x: float(str.split(x,' ')[0]) if isinstance(x,str) else x
     links['maxspeed'] = links['maxspeed'].apply(func)
 
     links.loc[(links['maxspeed'] < 25), network+'_<25mph'] = 1

@@ -34,19 +34,11 @@ def import_study_area(settings):
 
     # calculate the area of the study area in square miles
     sqmi = round(float(studyarea['geometry'].area / 5280**2),2) 
-    studyarea_name = settings['studyarea_name']
-    print(f"The area of the {studyarea_name} study area is {sqmi} square miles.")
+    print(f"The study area is {sqmi} square miles.")
 
     # print to examine
     ax = studyarea.plot(figsize=(10,10),alpha=0.5,edgecolor='k')
     cx.add_basemap(ax, crs=studyarea.crs)
-
-    #create directory
-    if not (settings['output_fp'] / Path(settings['studyarea_name'])).exists():
-        (settings['output_fp'] / Path(settings['studyarea_name'])).mkdir()
-
-    #export
-    studyarea.to_file((settings['output_fp'] / settings['studyarea_name'] / 'base_layers.gpkg'),layer='studyarea')
 
     return studyarea
 
@@ -61,7 +53,6 @@ def filter_networks(settings:dict,network_dict:dict):
     network_dict:
     
     "studyarea": studyarea, #geodataframe of the study area
-    "studyarea_name": studyarea_name, #name for the study area
     "networkfp": networkfp, #filepath for the network, specified earlier
     "network_name": 'abm', #name for the network being evaluated
     "network_mapper": network_mapper, #leave this, edit in the block above
@@ -102,7 +93,6 @@ def filter_to_general(settings:dict,network_dict:dict):
     (e.g., Interstates, sidewalks, private drives)
     '''
     studyarea = settings['studyarea']
-    studyarea_name = settings['studyarea_name']
     links_fp = network_dict['links_fp']
     network_name = network_dict['network_name']
 
@@ -120,30 +110,26 @@ def filter_to_general(settings:dict,network_dict:dict):
 
     #bring in or create nodes and add reference ids to links
     links, nodes = creating_nodes(links,settings,network_dict)
-
-    #make sure ID, A, and B columns are str
-    links[f'{network_name}_A'] = links[f'{network_name}_A'].astype(str)
-    links[f'{network_name}_B'] = links[f'{network_name}_B'].astype(str)
-    nodes[f'{network_name}_N'] = nodes[f'{network_name}_N'].astype(str)
-
+    
     #create A_B column
-    links[f'{network_name}_A_B'] = links[f'{network_name}_A'] + '_' + links[f'{network_name}_B']
+    links[f'{network_name}_A_B'] = links[f'{network_name}_A'].astype(str) + '_' + links[f'{network_name}_B'].astype(str)
+
+    #remove directional links (only do if no spurring links)
+    if network_name == 'abm':
+        #remove directed links
+        df_dup = pd.DataFrame(
+            np.sort(links[[f"{network_name}_A",f"{network_name}_B"]], axis=1),
+                columns=[f"{network_name}_A",f"{network_name}_B"]
+                )
     
-    #remove directed links
-    df_dup = pd.DataFrame(
-        np.sort(links[[f"{network_name}_A",f"{network_name}_B"]], axis=1),
-            columns=[f"{network_name}_A",f"{network_name}_B"]
-            )
-    
-    #preserve directionality
-    df_dup['two_way'] = df_dup.duplicated(keep=False)
-    df_dup = df_dup.drop_duplicates()
-    links = pd.merge(links,df_dup,how='inner', left_index = True, right_index = True,
-                     suffixes=(None,'_drop')).drop(columns={f'{network_name}_A_drop',f'{network_name}_B_drop'})
+        #preserve directionality
+        df_dup['two_way'] = df_dup.duplicated(keep=False)
+        df_dup = df_dup.drop_duplicates()
+        links = pd.merge(links,df_dup,how='inner', left_index = True, right_index = True,
+                        suffixes=(None,'_drop')).drop(columns={f'{network_name}_A_drop',f'{network_name}_B_drop'})
 
     #export the attributes
-    export_path = settings['output_fp'] / f'{studyarea_name}/{network_name}.pkl'
-    links.drop(columns=['geometry']).to_pickle(export_path)
+    links.drop(columns=['geometry']).to_pickle(settings['output_fp']/f'{network_name}_attr.pkl')
 
     #export raw links and nodes
     export(links,nodes,'raw',network_name,settings)
@@ -261,13 +247,23 @@ def filter_to_roads(links, nodes, settings, network_name):
         #find service links that still have a name
         service_links_with_name = links[ (links['highway'] == 'service') & (links['name'].isnull() == False) ]
         
+        #unclassified added 8/14/23 because there are several roads in Atlanta region marked this despite being public roads
         osm_filter_method = ['primary','primary_link','residential','secondary','secondary_link',
-                            'tertiary','tertiary_link','trunk','trunk_link'] 
+                            'tertiary','tertiary_link','trunk','trunk_link','unclassified'] 
         
         road_links = links[links["highway"].isin(osm_filter_method)]
         
+        #TODO make a formal input later
+        if (settings['output_fp'] / 'osm/include_osm_links.txt').exists():
+            keep_ids = pd.read_csv(settings['output_fp'] / 'osm/include_osm_links.txt',names=['osmid'])
+            add_links = links[links['osmid'].isin(keep_ids['osmid'])]
+            print(f'Adding {add_links.shape[0]} specified osm links')
+        else:
+            print('nothing happened')
+            add_links = pd.DataFrame()
+
         #add back in service links with a name
-        road_links = pd.concat([road_links,service_links_with_name],ignore_index=True)
+        road_links = pd.concat([road_links,service_links_with_name,add_links],ignore_index=True).drop_duplicates()
         
     elif network_name == "abm": # abm network
         print(f'No further filter needed for abm')
@@ -443,14 +439,13 @@ def filter_nodes(links,nodes,network_name):
     return nodes_filt
 
 def export(links,nodes,network_type,network_name,settings):
-    studyarea_name = settings['studyarea_name']
     #filter nodes
     nodes = filter_nodes(links,nodes,network_name)
     #remove excess columns
     links = links[[f'{network_name}_A',f'{network_name}_B',f'{network_name}_A_B','geometry']]
     nodes = nodes[[f'{network_name}_N','geometry']]
     #export
-    export_fp = settings['output_fp'] / Path(f'{studyarea_name}/filtered.gpkg')
+    export_fp = settings['output_fp'] / 'filtered.gpkg'
     links.to_file(export_fp,layer=f'{network_name}_links_{network_type}')
     nodes.to_file(export_fp,layer=f'{network_name}_nodes_{network_type}')
     return
@@ -458,22 +453,19 @@ def export(links,nodes,network_type,network_name,settings):
 #TODO fix this function
 def summary(settings):
     
-    output_fp = settings['output_fp']
-    studyarea_name = settings['studyarea_name']
-    
     #summary table
     #can add other metrics of interest in the future
     summary_table = pd.DataFrame(columns=['num_links','num_nodes','tot_link_length','avg_link_length'])
     
     #expected link types
-    layers = fiona.listlayers(output_fp / Path(f'{studyarea_name}/filtered.gpkg'))
+    layers = fiona.listlayers(settings['output_fp']/ 'filtered.gpkg')
 
     #remove node layers
     layers = [x for x in layers if 'node' not in x]
 
     #go through each network
     for network in layers:
-        links = gpd.read_file(output_fp / Path(f'{studyarea_name}/filtered.gpkg'),layer=network)
+        links = gpd.read_file(settings['output_fp']/'filtered.gpkg',layer=network)
     
         #get network name
         network_name = network.split('_')[0]
@@ -496,7 +488,7 @@ def summary(settings):
         summary_table.loc[network,:] = [num_links,num_nodes,tot_link_length,avg_link_length]
 
     #export summary table
-    summary_table.to_csv(output_fp / Path(f"{studyarea_name}/network_summary.csv"))
+    summary_table.to_csv(settings['output_fp']/ "network_summary.csv")
    
     print(summary_table)
 

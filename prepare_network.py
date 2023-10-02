@@ -10,7 +10,7 @@ import networkx as nx
 import osmnx as ox
 import time
 
-def prepare_network(links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame, spd_mph, rem_wrongway=True):
+def prepare_network(links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame, spd_mph, prevent_wrongway=True):
     '''
     This function takes in a links and nodes geodataframe and formats it into
     a routable network graph for use in BikewaySim. The nodes geodataframe must
@@ -41,7 +41,7 @@ def prepare_network(links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame, spd_mph, rem_
     links,nodes = largest_comp_and_simplify(links,nodes)
 
     #create reverse streets
-    links = create_reverse_links(links)
+    links = create_reverse_links(links,prevent_wrongway)
 
     #remove wrongway (just don't include them for now)
     # if rem_wrongway:
@@ -112,13 +112,14 @@ def create_bws_nodes(nodes):
     
     return nodes
 
-def create_reverse_links(links):
+def create_reverse_links(links,prevent_wrongway:bool):
     
     #flip start and end node ids
     links_rev = links.rename(columns={'A':'B','B':'A'})
 
     #drop all oneway links (need to let users specify the oneway column)
-    links_rev = links_rev[links_rev['oneway'] != 'yes']
+    if prevent_wrongway:
+        links_rev = links_rev[links_rev['oneway'] != 'yes']
 
     #HERE version
     # try:
@@ -139,11 +140,13 @@ def create_reverse_links(links):
     links = links.append(links_rev).reset_index(drop=True)
 
     #make A_B col
-    links['A_B'] = links['A'] + '_' + links['B']
+    links['A_B'] = links['A'].astype(str) + '_' + links['B'].astype(str)
 
     return links
 
 def largest_comp_and_simplify(links,nodes,net_name=None): 
+    
+    #optional arguement
     if net_name is not None:
         A = net_name + '_A'
         B = net_name + '_B'
@@ -155,9 +158,9 @@ def largest_comp_and_simplify(links,nodes,net_name=None):
     
     #create undirected graph
     G = nx.Graph()  # create directed graph
-    for ind, row2 in links.iterrows():
+    for row in links[[A,B]].itertuples(index=False):
         # forward graph, time stored as minutes
-        G.add_edges_from([(str(row2[A]), str(row2[B]))])
+        G.add_edges_from([(row[0],row[1])])
 
     #only keep largest component
     largest_cc = max(nx.connected_components(G), key=len)
@@ -165,6 +168,7 @@ def largest_comp_and_simplify(links,nodes,net_name=None):
     #TODO future project simplify graph connect links connect with nodes of degree 2
     #S = G.subgraph(largest_cc).copy()
     #simple_graph = ox.simplification.simplify_graph(S)
+    #there is a contract function too
     
     #get nodes
     nodes = nodes[nodes[N].isin(largest_cc)]

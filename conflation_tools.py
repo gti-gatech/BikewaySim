@@ -16,6 +16,10 @@ from itertools import compress
 from shapely.ops import LineString, Point, MultiPoint
 from pathlib import Path
 
+#network routing to find connections between networks
+import networkx as nx
+from tqdm import tqdm
+
 from helper_functions import ckdnearest
 
 def rename_geo(gdf:gpd.GeoDataFrame,name:str,type:str):
@@ -263,6 +267,7 @@ def point_on_line(unmatched_join_nodes, join_name, base_links, base_name, tolera
         
         if any(on_bool_list) == True: # if this row matches to base_links feature within the tolerance
             line_Nx = list(compress(range(len(on_bool_list)), on_bool_list)) # find the corresponding line
+            print(line_Nx[0])
             target_line = base_links.loc[line_Nx[0],f"{base_name}_line_geo"]
             interpolated_point = target_line.interpolate(target_line.project(row[f"{join_name}_point_geo"])) # find the interpolated point on the line
             unmatched_join_nodes.at[index, f"{base_name}_lie_on"] = "Y"
@@ -366,6 +371,56 @@ def add_rest_of_features(base_links,base_nodes,base_name,join_links,join_nodes,j
     
     return base_links, base_nodes
  
+def find_path(project_dir,network_name,road_nodes,dead_ends,cutoff_ft):
+    '''
+    When re-joining sub-networks, there may be sections that are disconnected
+    through the filtering process. This function imports the raw network to find
+    paths between dead end links of the bike network and the road network link
+
+    A cutoff distance is applied to speed up the shortest path search and also
+    ensure that only short gaps in the network are allowed.
+    '''
+    #import the raw osm file
+    raw_links = gpd.read_file(project_dir/'filtered.gpkg',layer=f'{network_name}_links_raw')
+    raw_links['length_ft'] = raw_links.length
+
+    raw_nodes = gpd.read_file(project_dir/"filtered.gpkg",layer=f'{network_name}_nodes_raw')
+    raw_nodes.index = raw_nodes[f'{network_name}_N']
+
+    #make an undirected graph
+    G = nx.Graph()
+    for row in raw_links[[f'{network_name}_A',f'{network_name}_B','length_ft']].itertuples(index=False):
+        G.add_weighted_edges_from([(row[0], row[1], row[2])],weight='weight')
+
+    #new connecting links
+    new_links = []
+    road_nodes_set = set(road_nodes[f'{network_name}_N'].tolist())
+
+    #loop that goes through each dead end and finds all road points that are within network distance (start with 500 ft)
+    for dead_end in tqdm(dead_ends[f'{network_name}_N'].tolist()):
+        path_lengths = nx.single_source_dijkstra_path_length(G,dead_end,cutoff=cutoff_ft,weight='weight')
+        #subset to only inlcude road nodes
+        path_lengths = {k:v for k,v in path_lengths.items() if k in road_nodes_set}
+        
+        if len(path_lengths) > 1:  
+            #find min and take first road node
+            closest_road_node = [k for k,v in path_lengths.items() if v == min(path_lengths.values())][0]
+            #add to new_links
+            new_links.append((dead_end,closest_road_node))
+        
+    df = pd.DataFrame(new_links,columns=[f'{network_name}_A',f'{network_name}_B'])
+    df[f'{network_name}_A_B'] = df[f'{network_name}_A'].astype(str) + '_' + df[f'{network_name}_B'].astype(str)
+    df['geo_A'] = df[f'{network_name}_A'].map(raw_nodes['geometry'])
+    df['geo_B'] = df[f'{network_name}_B'].map(raw_nodes['geometry'])
+    df['geometry'] = df.apply(lambda row: LineString([row['geo_A'],row['geo_B']]),axis=1)
+    df.drop(columns=['geo_A','geo_B'],inplace=True)
+    df = gpd.GeoDataFrame(df,geometry='geometry',crs=road_nodes.crs)
+    return df
+
+#function for creating match links
+
+
+
 # DEPRECATED CODE
 
 # def merge_diff_networks(base_links, base_nodes, base_type, join_links, join_nodes, join_type, tolerance_ft):

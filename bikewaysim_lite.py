@@ -269,7 +269,7 @@ def make_bikeshed(links_c,nodes,origin,radius,buffer_size,impedance_col):
     #TODO fix this
     df_dup = drop_duplicate_links(bikeshed)
     
-    print(f'---{taz}---')
+    print(f'---{origin}---')
     print(f'Bikeshed Network Miles: {np.round(df_dup.length.sum()/5280,1)}')
     print(f'Bikeshed Size (square miles w/{radius} ft access distance): {np.round(df_dup.buffer(buffer_size).area.sum()/5280/5280,1)}')    
 
@@ -277,7 +277,6 @@ def make_bikeshed(links_c,nodes,origin,radius,buffer_size,impedance_col):
 
 def drop_duplicate_links(links):
     #drops the additional two way link needed for network routing
-    df_dup = pd.DataFrame(np.sort(links[["A","B"]], axis=1), columns=["A","B"])
-    df_dup.drop_duplicates(inplace=True)
-    merged = pd.merge(links,df_dup,how='inner', left_index = True, right_index = True, suffixes=(None,'_drop')).drop(columns={'A_drop','B_drop'})
-    return merged
+    df_dup = pd.DataFrame(np.sort(links[["A","B"]], axis=1), columns=["A","B"], index = links.index).duplicated()
+    links = links[df_dup]
+    return links
