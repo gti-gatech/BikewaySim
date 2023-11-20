@@ -49,9 +49,9 @@ def download_osm(studyarea_fp,crs,export_fp,desired_osm_attributes:list=None):
             osm_links.drop(columns=col,inplace=True)
             print(f"{col} column removed for containing a list")   
 
-    # #pickle all attributes as is
-    # with (export_fp/'osm_all_attr.pkl').open('wb') as fh:
-    #     pickle.dump(osm_links.drop(columns=['geometry']),fh)
+    #pickle all attributes as is
+    with (export_fp/'osm.pkl').open('wb') as fh:
+        pickle.dump(osm_links,fh)
 
     return osmnx_nodes, osm_links
 
@@ -90,6 +90,9 @@ def download_osmnx(studyarea):
     #remove directed links (links for each direction)
     G = ox.utils_graph.get_undirected(G)
     
+    #get link bearing
+    G = ox.bearing.add_edge_bearings(G)
+
     #plot it for fun
     ox.plot_graph(G)
 
@@ -100,7 +103,7 @@ def download_osmnx(studyarea):
     links = links.reset_index()
     
     #simplify columns to geo and id
-    links = links[['osmid','geometry']]
+    links = links[['osmid','bearing','geometry']]
 
     #reset nodes index
     nodes = nodes.reset_index()

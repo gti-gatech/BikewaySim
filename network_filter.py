@@ -16,6 +16,10 @@ from shapely.geometry import Point
 from pathlib import Path
 import contextily as cx
 import fiona
+import warnings
+
+# Suppress the shapely warning
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 from helper_functions import *
 

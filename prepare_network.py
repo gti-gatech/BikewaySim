@@ -7,10 +7,9 @@ Created on Tue Jul 26 05:41:07 2022
 import geopandas as gpd
 import pandas as pd
 import networkx as nx
-import osmnx as ox
 import time
 
-def prepare_network(links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame, spd_mph, prevent_wrongway=True):
+def prepare_network(links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame,spd_mph:float,prevent_wrongway:bool=True):
     '''
     This function takes in a links and nodes geodataframe and formats it into
     a routable network graph for use in BikewaySim. The nodes geodataframe must
@@ -25,11 +24,8 @@ def prepare_network(links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame, spd_mph, prev
     the links geodataframe.
 
     '''
-
-    #record the starting time
-    time_start = time.time()
     
-    #TODO group by attributes and get list of edges with identical attributes (for network reduction/simplification)
+    #find code to remove interstitial nodes to reduce network size
     
     #prepare nodes
     nodes = create_bws_nodes(nodes)
@@ -41,11 +37,7 @@ def prepare_network(links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame, spd_mph, prev
     links,nodes = largest_comp_and_simplify(links,nodes)
 
     #create reverse streets
-    links = create_reverse_links(links,prevent_wrongway)
-
-    #remove wrongway (just don't include them for now)
-    # if rem_wrongway:
-    #     links = links[links['wrongway']==0]
+    links = create_reverse_links(links)
 
     #calculate distance for distance/travel time based impedance
     links['dist'] = links.length
@@ -54,8 +46,6 @@ def prepare_network(links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame, spd_mph, prev
     #round
     links['dist'] = links['dist'].round(2)
     links['mins'] = links['mins'].round(2)
-    
-    #print(f'Took {round(((time.time() - time_start)/60), 2)} minutes to prepare the network.')
     
     return links, nodes
 
@@ -112,34 +102,26 @@ def create_bws_nodes(nodes):
     
     return nodes
 
-def create_reverse_links(links,prevent_wrongway:bool):
-    
-    #flip start and end node ids
+def create_reverse_links(links):
+    '''
+    This code creates a column that indicates the direction of links.
+
+    Only works for OSM right now
+
+    When a network graph is made, this column can be used to filter out
+    wrongway travel if desired.
+    '''
+
+    links['wrongway'] = False
+
+    oneway = links['oneway'] == 'yes'
     links_rev = links.rename(columns={'A':'B','B':'A'})
-
-    #drop all oneway links (need to let users specify the oneway column)
-    if prevent_wrongway:
-        links_rev = links_rev[links_rev['oneway'] != 'yes']
-
-    #HERE version
-    # try:
-    #     #newwrongway
-    #     links_rev['newwrongway'] = 0
-    
-    #     #set wrongways to rightways and vice versa
-    #     links_rev.loc[links_rev['wrongway']==1,'newwrongway'] = 0
-    #     links_rev.loc[(links_rev['oneway']==1) & (links_rev['wrongway']==0),'newwrongway'] = 1 
-
-    #     #rename and drop
-    #     links_rev.drop(columns=['wrongway'],inplace=True)
-    #     links_rev.rename(columns={'newwrongway':'wrongway'},inplace=True)
-    # except:
-    #     print("No 'wrongway' column")
+    links_rev.loc[oneway,'wrongway'] = True
 
     #add to other links
-    links = links.append(links_rev).reset_index(drop=True)
+    links = pd.concat([links,links_rev],ignore_index=True)
 
-    #make A_B col
+    #make new A_B col
     links['A_B'] = links['A'].astype(str) + '_' + links['B'].astype(str)
 
     return links
