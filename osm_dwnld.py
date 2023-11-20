@@ -9,9 +9,8 @@ import requests
 import geopandas as gpd
 import pandas as pd
 import osmnx as ox
-import contextily as cx
+#import contextily as cx
 import matplotlib.pyplot as plt
-import pickle
 import numpy as np
 
 def download_osm(studyarea_fp,crs,export_fp,desired_osm_attributes:list=None):
@@ -24,8 +23,8 @@ def download_osm(studyarea_fp,crs,export_fp,desired_osm_attributes:list=None):
 
     if gdf.crs != 'epsg:4326':
         gdf.to_crs('epsg:4326',inplace=True)
-    ax = gdf.plot(figsize=(10,10),alpha=0.5,edgecolor='k')
-    cx.add_basemap(ax, crs=gdf.crs)
+    # ax = gdf.plot(figsize=(10,10),alpha=0.5,edgecolor='k')
+    # cx.add_basemap(ax, crs=gdf.crs)
 
     #get geometry info from osmnx
     osmnx_nodes, osmnx_links = download_osmnx(gdf)
@@ -47,7 +46,7 @@ def download_osm(studyarea_fp,crs,export_fp,desired_osm_attributes:list=None):
     for col in osm_links.columns.tolist():
         if list in [type(x) for x in osm_links.loc[:,col]]:
             osm_links.drop(columns=col,inplace=True)
-            print(f"{col} column removed for containing a list")   
+            print(f"{col} column removed for containing a list")
 
     #pickle all attributes as is
     with (export_fp/'osm.pkl').open('wb') as fh:
