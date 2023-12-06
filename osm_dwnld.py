@@ -9,9 +9,7 @@ import requests
 import geopandas as gpd
 import pandas as pd
 import osmnx as ox
-#import contextily as cx
-import matplotlib.pyplot as plt
-import numpy as np
+import pickle
 
 def download_osm(studyarea_fp,crs,export_fp,desired_osm_attributes:list=None):
     
@@ -55,6 +53,10 @@ def download_osm(studyarea_fp,crs,export_fp,desired_osm_attributes:list=None):
     return osmnx_nodes, osm_links
 
 def simple_download(studyarea):
+    '''
+    Just download the bike layer
+    '''
+    
     #convert to unprojected if already projected
     if studyarea.crs != 'EPSG:4326':
         studyarea = studyarea.to_crs('EPSG:4326')
@@ -63,10 +65,9 @@ def simple_download(studyarea):
     minx, miny, maxx, maxy = studyarea.total_bounds
     
     #retrieve graph from bbox
-    G = ox.graph_from_bbox(maxy, miny, maxx, minx, network_type='drive')
+    G = ox.graph_from_bbox(maxy, miny, maxx, minx, network_type='bike')
     
     return G
-
 
 def download_osmnx(studyarea):
 
@@ -145,48 +146,3 @@ def overpass_download(studyarea):
     df.columns = df.columns.str.replace(r'tags.', '')
 
     return df
-
-def reduce_attributes(osm_links,pct_complete_cutoff):
-
-    #get length and total length
-    network_length = osm_links.length
-    total_network_length = osm_links.length.sum()
-
-    #get pct complete weighted by total distance
-    attr_completion = osm_links.notna().apply(lambda col: col*network_length,axis=0).sum() / total_network_length * 100
-    attr_completion.name = 'pct_complete'
-
-    #retrieve all complete fields
-    complete = list(attr_completion[attr_completion>pct_complete_cutoff].index)
-    #less_complete = list(attr_completion[attr_completion<=pct_complete_cutoff].index)
-
-    # road attributes
-    road_columns = ['name','highway_1','oneway','lanes','maxspeed','bridge','crossing','sidewalk']
-
-    # parking attributes
-    parking_columns = [x for x in osm_links.columns.to_list() if 'parking' in x]
-
-    # bike attributes
-    bike_columns = [x for x in osm_links.columns.to_list() if (('cycle' in x) | ('bike' in x)) & ('motorcycle' not in x)]
-    foot_columns = [x for x in osm_links.columns.to_list() if ('foot' in x)]
-    bike_columns = bike_columns + foot_columns
-
-    #keep these columns
-    keep = complete+bike_columns+road_columns+parking_columns
-    osm_export = osm_links[keep]
-
-    # Make boxplot of attribute completion
-    marks = np.array(attr_completion)
-
-    fig, axis = plt.subplots(figsize =(10, 5))
-    axis.hist(marks, bins = np.array([x for x in range(0, 110, 10)]) / 100)
-    plt.xlabel('Percent of Attribute Complete')
-    plt.ylabel('Frequency')
-    # Displaying the graph
-    plt.show()
-
-    #removed columns
-    removed_cols = [ x for x in osm_links.columns if x not in keep]
-
-    return osm_export, removed_cols, bike_columns
-
