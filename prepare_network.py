@@ -53,18 +53,16 @@ def create_bws_links(links):
     #rename ID column
     cols = links.columns.tolist()
     
-    a_cols = [a_cols for a_cols in cols if ("_A" in a_cols) & ("A_B" not in a_cols)]
-    b_cols = [b_cols for b_cols in cols if ("_B" in b_cols) & ("A_B" not in b_cols)]
-    a_b_cols = [a_b_cols for a_b_cols in cols if "A_B" in a_b_cols]
+    a_cols = [a_cols for a_cols in cols if ("_A" in a_cols)]
+    b_cols = [b_cols for b_cols in cols if ("_B" in b_cols)]
     
     #warn if more than one column
-    if (len(a_cols) > 1) | (len(b_cols) > 1) | (len(a_b_cols) > 1):
+    if (len(a_cols) > 1) | (len(b_cols) > 1):
         print('warning, more than one id column present')
     
     #replace with desired hierarchy
     links = links.rename(columns={a_cols[0]:'A'})
     links = links.rename(columns={b_cols[0]:'B'})
-    links = links.rename(columns={a_b_cols[0]:'A_B'})
     
     return links
 
@@ -120,9 +118,6 @@ def create_reverse_links(links):
 
     #add to other links
     links = pd.concat([links,links_rev],ignore_index=True)
-
-    #make new A_B col
-    links['A_B'] = links['A'].astype(str) + '_' + links['B'].astype(str)
 
     return links
 

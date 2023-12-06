@@ -12,13 +12,13 @@ pd.options.mode.chained_assignment = None  # default='warn' #get rid of copy war
 import numpy as np
 #np.warnings.filterwarnings('ignore', category=np.VisibleDeprecationWarning)  
 import time
-from shapely.geometry import Point
+from shapely.geometry import Point, box
 from pathlib import Path
 import contextily as cx
 import fiona
 import warnings
 
-# Suppress the shapely warning
+# Suppress the shapely warning (not working)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 from helper_functions import *
@@ -41,8 +41,9 @@ def import_study_area(settings):
     print(f"The study area is {sqmi} square miles.")
 
     # print to examine
-    ax = studyarea.plot(figsize=(10,10),alpha=0.5,edgecolor='k')
-    cx.add_basemap(ax, crs=studyarea.crs)
+    studyarea.plot(figsize=(10,10),alpha=0.5,edgecolor='k')
+    #ax = studyarea.plot(figsize=(10,10),alpha=0.5,edgecolor='k')
+    #cx.add_basemap(ax, crs=studyarea.crs)
 
     return studyarea
 
@@ -78,15 +79,11 @@ def filter_networks(settings:dict,network_dict:dict):
 
     #import the network
     links, nodes = filter_to_general(settings,network_dict)  
-
-    #apply filtering methods and create nodes
-    filter_to_roads(links, nodes, settings, network_name)
-    filter_to_bike(links, nodes, settings, network_name)
-    filter_to_service(links, nodes, settings, network_name) 
     
     #print the total time it took to run the code
     print(f'{network_name} imported... took {round(((time.time() - tot_time_start)/60), 2)} minutes')
 
+    return links, nodes
 
 #use this to create a complete clean network
 def filter_to_general(settings:dict,network_dict:dict):
@@ -100,80 +97,53 @@ def filter_to_general(settings:dict,network_dict:dict):
     links_fp = network_dict['links_fp']
     network_name = network_dict['network_name']
 
-    # use bounding box to mask instead of polygon boundaries
-    if settings['use_bbox'] == True:
-        studyarea.geometry = studyarea.envelope
-    
     if network_dict['links_layer'] is None:
-        links = gpd.read_file(links_fp, mask = studyarea)
-    else:
-        links = gpd.read_file(links_fp, mask = studyarea, layer = network_dict['links_layer'])
+        network_dict['links_layer'] = 0
     
+    # use bounding box to mask instead of polygon boundaries
+    if settings['use_bbox']:
+        links = gpd.read_file(links_fp,bbox=tuple(studyarea.total_bounds),layer=network_dict['links_layer'])
+    else:
+        links = gpd.read_file(links_fp,mask=studyarea,layer=network_dict['links_layer'])
+    
+    # if network_dict['links_layer'] is None:
+    #     links = gpd.read_file(links_fp, mask = mask, layer = 0)
+    # else:
+    #     links = gpd.read_file(links_fp, mask = mask, layer = network_dict['links_layer'])
+
     if links.crs != settings['crs']:
         links.to_crs(settings['crs'],inplace=True)
 
+    #create linkids to distinguish links when they have the same start/end node
+    #prefer pre-established linkid but if linkid is not unique create new linkids
+    if links.columns.isin(['linkid']).any():
+        print('Column named linkid detected but not set as linkid column in settings.')
+        links.rename(columns={'linkid':'undefined_linkid'},inplace=True)
+    
+    if network_dict['linkid'] is not None:
+        if ~links.columns.isin([network_dict['linkid']]).any():
+            print('Provided linkid is not in the columns.')
+            network_dict['linkid'] = None
+        
+        if links[network_dict['linkid']].duplicated().any():
+            print('Provided linkid is not unique.')
+            network_dict['linkid'] = None
+            
+    if network_dict['linkid'] is not None:
+        links.rename(columns={network_dict['linkid']:f'{network_name}_linkid'},inplace=True)
+    else:
+        print('Generating unique link ids.')
+        links.reset_index(inplace=True)
+        links.rename(columns={'index':f'{network_name}_linkid'},inplace=True)
+
     #bring in or create nodes and add reference ids to links
     links, nodes = creating_nodes(links,settings,network_dict)
-    
-    #create A_B column
-    links[f'{network_name}_A_B'] = links[f'{network_name}_A'].astype(str) + '_' + links[f'{network_name}_B'].astype(str)
-
-    #remove directional links (only do if no spurring links)
-    if network_name == 'abm':
-        #remove directed links
-        df_dup = pd.DataFrame(
-            np.sort(links[[f"{network_name}_A",f"{network_name}_B"]], axis=1),
-                columns=[f"{network_name}_A",f"{network_name}_B"]
-                )
-    
-        #preserve directionality
-        df_dup['two_way'] = df_dup.duplicated(keep=False)
-        df_dup = df_dup.drop_duplicates()
-        links = pd.merge(links,df_dup,how='inner', left_index = True, right_index = True,
-                        suffixes=(None,'_drop')).drop(columns={f'{network_name}_A_drop',f'{network_name}_B_drop'})
 
     #export the attributes
     links.drop(columns=['geometry']).to_pickle(settings['output_fp']/f'{network_name}_attr.pkl')
 
-    #export raw links and nodes
-    export(links,nodes,'raw',network_name,settings)
-
-    #add in general cleaning measures here based on network_name
-    #we want to just drop all links that don't allow bikes (highways/sidewalks)
-    if network_name == 'osm':
-        print(f'Cleaning measures applied for {network_name}...')
-        
-        #remove self loops
-        links = links[links['osm_A']!=links['osm_B']]
-
-        #remove restricted access roads + sidewalks
-        restr_access = links['highway'].isin(['motorway','motorway_link'])
-        links = links[-restr_access]
-        
-        #remove sidewalks unless bikes explicitly allowed
-        remove_sidewalks = (links['footway'].isin(['sidewalk','crossing'])) & (links['bicycle'] != 'yes')
-        links = links[-remove_sidewalks]
-    
-    elif network_name == 'abm':
-        print(f'Cleaning measures applied for {network_name}...')
-
-        #explode and drop level to get rid of multi-index in abm layer
-        links = links.explode().reset_index(drop=True)
-
-        #remove interstates and centroid connectors
-        abm_road = [10,11,14]
-        links = links[links["FACTYPE"].isin(abm_road)]
-    
-    elif network_name == 'here':
-        #remove controlled access roads and ramps
-        links = links[(links['CONTRACC'].str.contains('N'))& 
-                          (links['RAMP'].str.contains('N'))
-                          ]
-    else:
-        print(f'No cleaning measures defined for {network_name} network. Open "filter to general.py" and add filtering logic.')
-
-    #export the general links
-    export(links,nodes,'general',network_name,settings)
+    #initialize a link type column
+    links['link_type'] = np.nan
 
     return links, nodes
 
@@ -185,7 +155,7 @@ def creating_nodes(links:gpd.GeoDataFrame,settings:dict,network_dict:dict):
     It will also assign reference ids to links if they aren't provided.
     '''
     
-    #TODO have cleaner way of extractign variables from dict
+    #TODO have cleaner way of extracting variables from dict
     nodes_fp = network_dict['nodes_fp']
     A = network_dict['A']
     B = network_dict['B']
@@ -237,113 +207,21 @@ def creating_nodes(links:gpd.GeoDataFrame,settings:dict,network_dict:dict):
 
     return links, nodes
     
-def filter_to_roads(links, nodes, settings, network_name):  
-    '''
-    The function filters the network to only public roads (no bike paths).
-    '''
-    
-    filter_specified = True
-    
-    #filtering logic
-    if network_name == "osm": # osm network
-        print(f'{network_name} road filter applied...')    
-        
-        #find service links that still have a name
-        service_links_with_name = links[ (links['highway'] == 'service') & (links['name'].isnull() == False) ]
-        
-        #unclassified added 8/14/23 because there are several roads in Atlanta region marked this despite being public roads
-        osm_filter_method = ['primary','primary_link','residential','secondary','secondary_link',
-                            'tertiary','tertiary_link','trunk','trunk_link','unclassified'] 
-        
-        road_links = links[links["highway"].isin(osm_filter_method)]
-        
-        #TODO make a formal input later
-        if (settings['output_fp'] / 'osm/include_osm_links.txt').exists():
-            keep_ids = pd.read_csv(settings['output_fp'] / 'osm/include_osm_links.txt',names=['osmid'])
-            add_links = links[links['osmid'].isin(keep_ids['osmid'])]
-            print(f'Adding {add_links.shape[0]} specified osm links')
-        else:
-            print('nothing happened')
-            add_links = pd.DataFrame()
 
-        #add back in service links with a name
-        road_links = pd.concat([road_links,service_links_with_name,add_links],ignore_index=True).drop_duplicates()
-        
-    elif network_name == "abm": # abm network
-        print(f'No further filter needed for abm')
-        filter_specified = False
-    
-    elif network_name == "here": # here network
-        print(f'{network_name} road filter applied...')    
-        #only allow links that allow cars and dont have speed of < 6 mph b/c those are service links
-        road_links = links[(links['AR_AUTO'].str.contains('Y')) & 
-                           (links['SPEED_CAT'].str.contains('8') == False)
-                           ]
-    else:
-        print(f'No road filter for {network_name}. Open "network_filter.py" and add it to the filter_to_road function.')
-        filter_specified = False
+def remove_directed_links(links, network_name):
+    #remove directed links
+    df_dup = pd.DataFrame(
+        np.sort(links[[f"{network_name}_A",f"{network_name}_B"]], axis=1),
+            columns=[f"{network_name}_A",f"{network_name}_B"]
+            )
 
-    if filter_specified == True:
-        export(road_links,nodes,'road',network_name,settings)
+    #preserve directionality in column called 'bothways'
+    df_dup['bothways'] = df_dup.duplicated(keep=False)
+    df_dup = df_dup.drop_duplicates()
+    links = pd.merge(links,df_dup,how='inner', left_index = True, right_index = True,
+                    suffixes=(None,'_drop')).drop(columns={f'{network_name}_A_drop',f'{network_name}_B_drop'})
     
-    return
-        
-def filter_to_bike(links, nodes, settings, network_name):     
-    '''
-    Filter to network to bike-only links (no public roads or service roads).
-    '''
-    filter_specified = True
-    
-    #filtering logic
-    if network_name == "osm": # osm network
-        print(f'{network_name} bike filter applied...') 
-        osm_filter_method = ['cycleway','footway','path','pedestrian','steps']
-        bike_links = links[links["highway"].isin(osm_filter_method)]
-        
-    elif network_name == "abm": # abm network
-        print(f'No bike links present for {network_name}')
-        filter_specified = False
-        
-    elif network_name == "here": # here network ## in future if there are more layers just modify this if condition
-        print(f'{network_name} bike filter applied...') 
-        bike_links = links[ links['AR_AUTO'].str.contains('N') ]
-        
-    else:
-        print(f'No bike filter for {network_name}. Open "network_filter.py" and add it to the filter_to_bike function.')
-        filter_specified = False
-
-    if filter_specified == True:
-        export(bike_links,nodes,'bike',network_name,settings)
-    return
-
-def filter_to_service(links, nodes, settings, network_name):
-    '''
-    Filter to network to service links (driveways, parking lots, alleys).
-    '''
-    #if this variable remains true, then there are service links
-    filter_specified = True
-      
-    #filtering logic, need to specify for new networks
-    if network_name == "osm": # osm network
-        print(f'{network_name} service filter applied...') 
-        osm_filter_method = ['service']
-        service_links = links[links["highway"].isin(osm_filter_method) & (links['name'].isnull())]  
-    
-    elif network_name == "abm": # abm network
-        print(f'No service links present for {network_name}')
-        filter_specified = False
-   
-    elif network_name == "here": #here network
-        print(f'{network_name} service filter applied...') 
-        service_links = links[ (links['AR_AUTO'].str.contains('Y')) & (links['SPEED_CAT'].str.contains('8')) ]
-    
-    else:
-        print(f'No service filter for {network_name}. Open "network_filter.py" and add it to the filter_to_service function.')
-        filter_specified = False
-    
-    if filter_specified == True:
-        export(service_links,nodes,'service',network_name,settings)
-    return
+    return links
 
 # Extract Start and End Points as tuples and round to reduce precision
 def start_node(row, geom):
@@ -358,19 +236,19 @@ def start_node_geo(row, geom):
 def end_node_geo(row, geom):
    return (Point(row[geom].coords.xy[0][-1], row[geom].coords.xy[1][-1]))
 
-
 def add_ref_ids(links,nodes,network_name):
     '''
     This function adds reference columns to links from the nodes id column
     '''
     for_matching = links.copy()
+
     #make the first point the active geometry
     for_matching['pt_geometry'] = for_matching.apply(start_node_geo, geom='geometry', axis=1)
     for_matching.set_geometry('pt_geometry',inplace=True)
     for_matching.drop(columns='geometry',inplace=True)
     #find nearest node from starting node and add to column
     links[f'{network_name}_A'] = ckdnearest(for_matching,nodes,return_dist=False)[f'{network_name}_N']
-    
+
     #repeat for end point
     for_matching = links.copy()
     #make the first point the active geometry
@@ -442,21 +320,24 @@ def filter_nodes(links,nodes,network_name):
     nodes_filt = nodes[nodes[f'{network_name}_N'].isin(nodes_in)]
     return nodes_filt
 
-def export(links,nodes,network_type,network_name,settings):
-    #filter nodes
-    nodes = filter_nodes(links,nodes,network_name)
-    #remove excess columns
-    links = links[[f'{network_name}_A',f'{network_name}_B',f'{network_name}_A_B','geometry']]
+def export(links,nodes,network_name,settings):
+    start = time.time()
+    #remove excess columns for now
+    links = links[[f'{network_name}_A',f'{network_name}_B',f'{network_name}_linkid','link_type','geometry']]
     nodes = nodes[[f'{network_name}_N','geometry']]
     #export
     export_fp = settings['output_fp'] / 'filtered.gpkg'
-    links.to_file(export_fp,layer=f'{network_name}_links_{network_type}')
-    nodes.to_file(export_fp,layer=f'{network_name}_nodes_{network_type}')
+    links.to_file(export_fp,layer=f'{network_name}_links')
+    nodes.to_file(export_fp,layer=f'{network_name}_nodes')
+    end = time.time()
+    print('Export took',np.round((end-start)/60,2),'minutes')
     return
 
-#TODO fix this function
 def summary(settings):
-    
+    '''
+    Look at and summurize features in a filter.gpkg file.
+    '''
+
     #summary table
     #can add other metrics of interest in the future
     summary_table = pd.DataFrame(columns=['num_links','num_nodes','tot_link_length','avg_link_length'])
@@ -495,51 +376,3 @@ def summary(settings):
     summary_table.to_csv(settings['output_fp']/ "network_summary.csv")
    
     print(summary_table)
-
-
-# Deprecated because bike links end up isolated this way
-# #filter to only roads that bikes allowed on and remove service roads
-# def filter_to_roadbike(links:gpd.GeoDataFrame, nodes:gpd.GeoDataFrame, settings:dict, network_name:str):  
-#     '''
-#     This function removes service roads.
-#     '''
-    
-#     filter_specified = True
-    
-#     #filtering logic
-#     if network_name == "osm":
-#         print(f'{network_name} roadbike filter applied...')    
-        
-#         #find service links that still have a name
-#         service_links_with_name = links[ (links['highway'] == 'service') & (links['name'].isnull() == False) ]
-        
-#         osm_bike_filter_method = ['cycleway','footway','path','pedestrian','steps']
-        
-#         osm_road_filter_method = ['primary','primary_link','residential','secondary','secondary_link',
-#                             'tertiary','tertiary_link','trunk','trunk_link'] 
-
-#         osm_filter_method = osm_bike_filter_method + osm_road_filter_method        
-
-#         roadbike_links = links[links["highway"].isin(osm_filter_method)]
-        
-#         #add back in service links with a name
-        
-        
-#         roadbike_links = roadbike_links.append(service_links_with_name)
-        
-#     elif network_name == "abm": # abm network
-#         print(f'No further filter needed for {network_name}')
-#         filter_specified = False
-    
-#     elif network_name == "here": # here network
-#         print(f'{network_name} roadbike filter applied...')    
-#         #only allow links that allow cars and dont have speed of < 6 mph b/c those are service links
-#         roadbike_links = links[(links['SPEED_CAT'].str.contains('8') == False)]
-    
-#     else:
-#         print(f'No roadbike filter for {network_name}. Open "network_filter.py" and add it to the filter_to_roadbike function.')
-#         filter_specified = False
-
-#     if filter_specified:
-#         export(roadbike_links,nodes,'roadbike',network_name,settings)
-#     return
