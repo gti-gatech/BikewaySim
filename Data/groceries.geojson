@@ -1,0 +1,523 @@
+{
+  "type": "FeatureCollection",
+  "generator": "overpass-turbo",
+  "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL.",
+  "timestamp": "2023-12-06T07:03:06Z",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/25366944",
+        "addr:city": "Davis",
+        "addr:housenumber": "620",
+        "addr:street": "G Street",
+        "building": "supermarket",
+        "name": "Davis Food Cooperative",
+        "shop": "supermarket",
+        "toilets": "yes",
+        "website": "https://davisfood.coop/",
+        "wheelchair": "yes"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -121.7400146,
+              38.549873
+            ],
+            [
+              -121.7399962,
+              38.5498129
+            ],
+            [
+              -121.7401054,
+              38.5497933
+            ],
+            [
+              -121.740079,
+              38.5496952
+            ],
+            [
+              -121.7400862,
+              38.5496952
+            ],
+            [
+              -121.7400542,
+              38.5495387
+            ],
+            [
+              -121.7401204,
+              38.5495192
+            ],
+            [
+              -121.7400495,
+              38.5493554
+            ],
+            [
+              -121.740096,
+              38.5493398
+            ],
+            [
+              -121.7400317,
+              38.5493078
+            ],
+            [
+              -121.7399751,
+              38.5492075
+            ],
+            [
+              -121.7399646,
+              38.549192
+            ],
+            [
+              -121.739957,
+              38.5492118
+            ],
+            [
+              -121.7397829,
+              38.5492526
+            ],
+            [
+              -121.7395863,
+              38.549239
+            ],
+            [
+              -121.7396697,
+              38.5495525
+            ],
+            [
+              -121.7396103,
+              38.5495622
+            ],
+            [
+              -121.7397239,
+              38.5499289
+            ],
+            [
+              -121.7399234,
+              38.549895
+            ],
+            [
+              -121.7399217,
+              38.5498896
+            ],
+            [
+              -121.7400146,
+              38.549873
+            ]
+          ]
+        ]
+      },
+      "id": "way/25366944"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/36921187",
+        "addr:city": "Davis",
+        "addr:housenumber": "1414",
+        "addr:postcode": "95616",
+        "addr:state": "CA",
+        "addr:street": "East Covell Boulevard",
+        "building": "commercial",
+        "name": "Nugget Markets",
+        "opening_hours": "Mo-Su 06:00-23:00",
+        "phone": "530-750-3800",
+        "shop": "supermarket",
+        "website": "https://www.nuggetmarket.com/locations/covell-davis/",
+        "wheelchair": "yes"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -121.7336357,
+              38.5607248
+            ],
+            [
+              -121.7333844,
+              38.5607202
+            ],
+            [
+              -121.7333836,
+              38.5606785
+            ],
+            [
+              -121.7331299,
+              38.5606773
+            ],
+            [
+              -121.7331288,
+              38.5607173
+            ],
+            [
+              -121.7327152,
+              38.5607122
+            ],
+            [
+              -121.7327055,
+              38.5610747
+            ],
+            [
+              -121.7326877,
+              38.5610744
+            ],
+            [
+              -121.7326832,
+              38.5611727
+            ],
+            [
+              -121.7328197,
+              38.5611849
+            ],
+            [
+              -121.7328202,
+              38.5611664
+            ],
+            [
+              -121.7335026,
+              38.5611742
+            ],
+            [
+              -121.7335038,
+              38.5610194
+            ],
+            [
+              -121.7335429,
+              38.5610206
+            ],
+            [
+              -121.7335432,
+              38.5609489
+            ],
+            [
+              -121.7336337,
+              38.56095
+            ],
+            [
+              -121.7336357,
+              38.5607248
+            ]
+          ]
+        ]
+      },
+      "id": "way/36921187"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/253731115",
+        "addr:city": "Davis",
+        "addr:housenumber": "2121",
+        "addr:postcode": "96516",
+        "addr:state": "CA",
+        "addr:street": "Cowell Boulevard",
+        "branch": "1561",
+        "brand": "Safeway",
+        "brand:wikidata": "Q1508234",
+        "brand:wikipedia": "en:Safeway Inc.",
+        "building": "supermarket",
+        "designation": "Safeway 1561",
+        "name": "Safeway",
+        "opening_hours": "24/7",
+        "operator": "Safeway",
+        "shop": "supermarket",
+        "source": "local knowledge",
+        "website": "https://local.safeway.com/safeway/ca/davis/2121-cowell-blvd.html"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -121.7254814,
+              38.5408376
+            ],
+            [
+              -121.7249128,
+              38.5408754
+            ],
+            [
+              -121.7249208,
+              38.5409425
+            ],
+            [
+              -121.7248699,
+              38.5409509
+            ],
+            [
+              -121.7249423,
+              38.541532
+            ],
+            [
+              -121.7249932,
+              38.5415278
+            ],
+            [
+              -121.7250032,
+              38.5415517
+            ],
+            [
+              -121.7255132,
+              38.5415116
+            ],
+            [
+              -121.7255592,
+              38.5415027
+            ],
+            [
+              -121.7255324,
+              38.5412824
+            ],
+            [
+              -121.7256316,
+              38.5412698
+            ],
+            [
+              -121.7256182,
+              38.5411586
+            ],
+            [
+              -121.7255163,
+              38.5411649
+            ],
+            [
+              -121.7254814,
+              38.5408376
+            ]
+          ]
+        ]
+      },
+      "id": "way/253731115"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/253731412",
+        "addr:housenumber": "1451",
+        "addr:postcode": "95616",
+        "addr:street": "West Covell Boulevard",
+        "branch": "1205",
+        "brand": "Safeway",
+        "brand:wikidata": "Q1508234",
+        "brand:wikipedia": "en:Safeway Inc.",
+        "building": "commercial",
+        "designation": "Safeway 1205",
+        "name": "Safeway",
+        "opening_hours": "24/7",
+        "shop": "supermarket",
+        "website": "https://local.safeway.com/safeway/ca/davis/1451-w-covell-blvd.html"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -121.7667513,
+              38.5617208
+            ],
+            [
+              -121.7667344,
+              38.5617208
+            ],
+            [
+              -121.7662365,
+              38.5617157
+            ],
+            [
+              -121.7662171,
+              38.5616987
+            ],
+            [
+              -121.7662158,
+              38.5618002
+            ],
+            [
+              -121.7661993,
+              38.5617988
+            ],
+            [
+              -121.7661988,
+              38.5618177
+            ],
+            [
+              -121.7661987,
+              38.5618375
+            ],
+            [
+              -121.7662142,
+              38.5618374
+            ],
+            [
+              -121.7662107,
+              38.5619326
+            ],
+            [
+              -121.766184,
+              38.5619328
+            ],
+            [
+              -121.7661832,
+              38.5620084
+            ],
+            [
+              -121.7662025,
+              38.5620092
+            ],
+            [
+              -121.7662001,
+              38.5621565
+            ],
+            [
+              -121.7661795,
+              38.5621563
+            ],
+            [
+              -121.7661783,
+              38.5622322
+            ],
+            [
+              -121.7662068,
+              38.5622342
+            ],
+            [
+              -121.7662036,
+              38.5623345
+            ],
+            [
+              -121.7664613,
+              38.5623365
+            ],
+            [
+              -121.7664604,
+              38.5623863
+            ],
+            [
+              -121.766808,
+              38.5623889
+            ],
+            [
+              -121.7668086,
+              38.562277
+            ],
+            [
+              -121.7667392,
+              38.5622756
+            ],
+            [
+              -121.7667513,
+              38.5617208
+            ]
+          ]
+        ]
+      },
+      "id": "way/253731412"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "node/597045822",
+        "addr:city": "Davis",
+        "addr:housenumber": "409",
+        "addr:postcode": "95618",
+        "addr:state": "CA",
+        "addr:street": "Mace Boulevard",
+        "description": "Family-owned and operated since 1926, Nugget Markets sells fresh groceries in Davis, CA.",
+        "name": "Nugget Markets",
+        "opening_hours": "Mo-Su 07:00-22:00",
+        "phone": "+1 530-753-6690",
+        "shop": "supermarket",
+        "website": "https://www.nuggetmarket.com/locations/mace-davis/"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.6960082,
+          38.5501266
+        ]
+      },
+      "id": "node/597045822"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "node/711012114",
+        "name": "Westlake IGA Market",
+        "shop": "supermarket"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.7870207,
+          38.5545359
+        ]
+      },
+      "id": "node/711012114"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "node/1052335476",
+        "addr:city": "Davis",
+        "addr:housenumber": "885",
+        "addr:postcode": "95616",
+        "addr:street": "Russell Boulevard",
+        "brand": "Trader Joe's",
+        "brand:wikidata": "Q688825",
+        "brand:wikipedia": "en:Trader Joe's",
+        "name": "Trader Joe's",
+        "opening_hours": "Mo-Su 08:00-21:00",
+        "phone": "+1 530-757-2693",
+        "shop": "supermarket",
+        "website": "https://www.traderjoes.com/",
+        "wheelchair": "yes"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.7614973,
+          38.5467537
+        ]
+      },
+      "id": "node/1052335476"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "node/2188177617",
+        "name": "Savemart",
+        "shop": "supermarket"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.7577404,
+          38.559607
+        ]
+      },
+      "id": "node/2188177617"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "node/7352799822",
+        "brand": "Grocery Outlet",
+        "brand:wikidata": "Q5609934",
+        "brand:wikipedia": "en:Grocery Outlet",
+        "name": "Grocery Outlet",
+        "official_name": "Grocery Outlet Bargain Market",
+        "shop": "supermarket"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.7297074,
+          38.5527092
+        ]
+      },
+      "id": "node/7352799822"
+    }
+  ]
+}
