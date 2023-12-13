@@ -1,9 +1,7 @@
-
-
 from scipy.spatial import cKDTree
 import numpy as np
 import pandas as pd
-
+import time
 
 #take in two geometry columns and find nearest gdB point from each
 #point in gdA. Returns the matching distance too.

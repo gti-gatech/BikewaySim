@@ -82,7 +82,8 @@ def create_graph(links,impedance_col):
     
     DGo = nx.DiGraph()  # create directed graph
     for ind, row2 in links.iterrows():
-        DGo.add_weighted_edges_from([(str(row2['A']), str(row2['B']), float(row2[impedance_col]))],weight=impedance_col)   
+        DGo.add_weighted_edges_from([(int(row2['A']), int(row2['B']), float(row2[impedance_col]))],weight=impedance_col)   
+    
     return DGo
         
 def find_shortest(links:gpd.GeoDataFrame,nodes:gpd.GeoDataFrame,ods_:pd.DataFrame,impedance_col:str):

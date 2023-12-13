@@ -1,6 +1,7 @@
 import geopandas as gpd
 import pandas as pd
-import osmnx as ox
+#import osmnx as ox
+from geographiclib.geodesic import Geodesic
 import numpy as np
 from shapely import wkt
 from shapely.wkt import dumps
@@ -21,7 +22,7 @@ def add_attributes(base_links:gpd.GeoDataFrame, join_links:gpd.GeoDataFrame, joi
     either network have been drawn in a different direction.
 
     If dissolve is set to 'True', then the join links are dissolved by
-    its attributes (excluding the node id columns A, B, and A_B).
+    its attributes (excluding unique attributes such as node id columns A, B, and linkid).
     
     The buffered links are then intersected with the base links. Two metrics are calculated. 
     
@@ -58,14 +59,21 @@ def add_attributes(base_links:gpd.GeoDataFrame, join_links:gpd.GeoDataFrame, joi
     buffered_links = join_links.copy()
 
     if bearing_diff:
+        # og_crs = intersect.crs
+        # intersect.to_crs('epsg:4326',inplace=True)
+        # buffered_links.to_crs('epsg:4326',inplace=True)
+        
         #calculate bearing (from start to end node) and add to base links and join links as new attribute
         intersect['base_bearing'] = intersect.apply(lambda row: add_bearing(row),axis=1)
         buffered_links['join_bearing'] = buffered_links.apply(lambda row: add_bearing(row),axis=1)
 
+        # intersect.to_crs(og_crs,inplace=True)
+        # buffered_links.to_crs(og_crs,inplace=True)
+
         #if above 180 subtract 180 to account for links that have reversed directions
         intersect.loc[intersect['base_bearing']>=180,'base_bearing'] = intersect['base_bearing'] - 180
         buffered_links.loc[buffered_links['join_bearing']>180,'join_bearing'] = buffered_links['join_bearing'] - 180
-        
+
         #round to nearest 5 degrees
         intersect['base_bearing'] = (intersect['base_bearing'] / 5).round().astype(int) * 5
         buffered_links['join_bearing'] = (buffered_links['join_bearing'] / 5).round().astype(int) * 5
@@ -76,7 +84,7 @@ def add_attributes(base_links:gpd.GeoDataFrame, join_links:gpd.GeoDataFrame, joi
     #paired with bearing then will only dissolve links if they're the same direction
     if dissolve:
         #drop unique id columns
-        buffered_links.drop(columns=[f'{join_name}_A',f'{join_name}_B',f'{join_name}_A_B'],inplace=True)
+        buffered_links.drop(columns=[f'{join_name}_A',f'{join_name}_B',f'{join_name}_linkid'],inplace=True)
 
         #dissolve by attributes in join links
         cols = buffered_links.columns.to_list()
@@ -118,8 +126,50 @@ def add_bearing(row):
     lat2 = row['geometry'].coords.xy[-1][1]
     lon1 = row['geometry'].coords.xy[0][0]
     lon2 = row['geometry'].coords.xy[-1][0]
+
+    bearing = calculate_bearing(lat1,lon1,lat2,lon2)
     
-    return ox.bearing.calculate_bearing(lat1,lon1,lat2,lon2)
+    return bearing
+
+#from osmnx
+#it asks for coordinates in decimal degrees but returns all barings as 114 degrees?
+def calculate_bearing(lat1, lon1, lat2, lon2):
+    """
+    Calculate the compass bearing(s) between pairs of lat-lon points.
+
+    Vectorized function to calculate initial bearings between two points'
+    coordinates or between arrays of points' coordinates. Expects coordinates
+    in decimal degrees. Bearing represents the clockwise angle in degrees
+    between north and the geodesic line from (lat1, lon1) to (lat2, lon2).
+
+    Parameters
+    ----------
+    lat1 : float or numpy.array of float
+        first point's latitude coordinate
+    lon1 : float or numpy.array of float
+        first point's longitude coordinate
+    lat2 : float or numpy.array of float
+        second point's latitude coordinate
+    lon2 : float or numpy.array of float
+        second point's longitude coordinate
+
+    Returns
+    -------
+    bearing : float or numpy.array of float
+        the bearing(s) in decimal degrees
+    """
+    # get the latitudes and the difference in longitudes, all in radians
+    lat1 = np.radians(lat1)
+    lat2 = np.radians(lat2)
+    delta_lon = np.radians(lon2 - lon1)
+
+    # calculate initial bearing from -180 degrees to +180 degrees
+    y = np.sin(delta_lon) * np.cos(lat2)
+    x = np.cos(lat1) * np.sin(lat2) - np.sin(lat1) * np.cos(lat2) * np.cos(delta_lon)
+    initial_bearing = np.degrees(np.arctan2(y, x))
+
+    # normalize to 0-360 degrees to get compass bearing
+    return initial_bearing % 360
 
 
 def add_osm_attr(links,attr_fp):
@@ -130,10 +180,10 @@ def add_osm_attr(links,attr_fp):
     attr.drop(columns=['osm_A','osm_B'],inplace=True)
 
     #attach attribute data to filtered links
-    links = pd.merge(links,attr,on=['osm_A_B'],how='left')
+    links = pd.merge(links,attr,on=['osm_linkid'],how='left')
 
     #init columns
-    columns_to_add = ['bl','pbl','mu','<25mph','25-30mph','>30mph','1lpd','2-3lpd','>4lpd']
+    columns_to_add = ['bl','pbl','mu','speed_mph','lanes']
 
     for col in columns_to_add:
         links[network + '_' + col] = 0
@@ -151,7 +201,10 @@ def add_osm_attr(links,attr_fp):
     links.loc[bl_cond,network+'_bl'] = 1
 
     #find protected bike lanes
-    pbl_cond = (links['highway'] == 'cycleway') | links['highway_1']=='cycleway'#& (links['foot'] == 'no')
+    if (links.columns == 'highway_1').any():
+        pbl_cond = (links['highway'] == 'cycleway') | links['highway_1']=='cycleway'#& (links['foot'] == 'no')
+    else:
+        pbl_cond = (links['highway'] == 'cycleway')
     links.loc[pbl_cond, network+'_pbl'] = 1
 
     #find mups
@@ -169,11 +222,11 @@ def add_osm_attr(links,attr_fp):
     
     #covert strings to numbers (gets rid of units, but won't work if no numbers present)
     func = lambda x: float(str.split(x,' ')[0]) if isinstance(x,str) else x
-    links['maxspeed'] = links['maxspeed'].apply(func)
+    links['speed_mph'] = links['maxspeed'].apply(func)
 
-    links.loc[(links['maxspeed'] < 25), network+'_<25mph'] = 1
-    links.loc[(links['maxspeed'] >= 25) & (links['maxspeed'] <= 30), network+'_25-30mph'] = 1
-    links.loc[(links['maxspeed'] > 30), network+'_>30mph'] = 1
+    # links.loc[(links['maxspeed'] < 25), network+'_<25mph'] = 1
+    # links.loc[(links['maxspeed'] >= 25) & (links['maxspeed'] <= 30), network+'_25-30mph'] = 1
+    # links.loc[(links['maxspeed'] > 30), network+'_>30mph'] = 1
 
     #number of lanes
     #convert none to nan
@@ -182,9 +235,9 @@ def add_osm_attr(links,attr_fp):
     #make sure numeric
     links['lanes'] = pd.to_numeric(links['lanes'])
 
-    links.loc[links['lanes'] < 3, network+'_1lpd'] = 1
-    links.loc[(links['lanes'] >= 3) & (links['lanes'] < 6), network+'_2-3lpd'] = 1
-    links.loc[links['lanes'] >= 8, network+'_>4lpd'] = 1
+    # links.loc[links['lanes'] < 3, network+'_1lpd'] = 1
+    # links.loc[(links['lanes'] >= 3) & (links['lanes'] < 6), network+'_2-3lpd'] = 1
+    # links.loc[links['lanes'] >= 8, network+'_>4lpd'] = 1
 
     #OTHER ATTRIBUTES
     # =============================================================================
@@ -207,10 +260,11 @@ def add_osm_attr(links,attr_fp):
     # links.drop(columns=['sidewalk'],inplace=True)
     # =============================================================================
 
-    final_cols = ['A','B','A_B'] + columns_to_add
+    final_cols = ['A','B','linkid'] + columns_to_add
     final_cols = [ network + '_' + x for x in final_cols]
+    final_cols = ['name','highway','oneway','bearing'] + final_cols+['geometry']
 
-    links = links[final_cols+['name','highway','oneway','geometry']]
+    links = links[set(links.columns) & set(final_cols)]
 
     return links
 
@@ -222,7 +276,7 @@ def add_here_attr(links,attr_fp):
     attr = pd.read_pickle(attr_fp)
 
     #attach attribute data to filtered links
-    links = pd.merge(links,attr,on=['here_A','here_B','here_A_B'])
+    links = pd.merge(links,attr,on='linkid')
         
     #init columns
     columns_to_add = ['<25mph','25-30mph','>30mph','1lpd','2-3lpd','>4lpd']
@@ -276,7 +330,7 @@ def add_here_attr(links,attr_fp):
         }
     links['FUNC_CLASS'] = links['FUNC_CLASS'].map(func_class)
 
-    final_cols = ['A','B','A_B'] + columns_to_add
+    final_cols = ['A','B','linkid'] + columns_to_add
     final_cols = [ network + '_' + x for x in final_cols]
 
     links = links[final_cols+['ST_NAME','FUNC_CLASS','DIR_TRAVEL','geometry']]
@@ -289,7 +343,7 @@ def add_abm_attr(links,attr_fp):
     attr = pd.read_pickle(attr_fp)
 
     #attach attribute data to filtered links
-    links = pd.merge(links,attr,on=['here_A','here_B','here_A_B'])
+    links = pd.merge(links,attr,on=['here_A','here_B','here_linkid'])
     
     #speed
     links['SPEEDLIMIT']
