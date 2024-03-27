@@ -102,24 +102,5 @@ This final notebook runs the Dijkstra shortest path routing algorithm for the gi
 ### Authors
 - **Reid Passmore**
     - Ph.D. Canddiate at the Georgia Institute of Technology
-    - 
-    - 
-    - <https://sites.google.com/view/reidpasssmore/>
-
-- **Ziyi
-
-- **Fizzy Fan
-
-- **Tarun Rambha**
-    - Assistant Professor in the Department of Civil Engineering and the Center for Infrastructure, Sustainable Transportation and Urban Planning (CiSTUP) at Indian Institute of Science (IISc) Bengaluru, India.
-    - Mail Id: tarunrambha@iisc.ac.in
-    - <http://civil.iisc.ernet.in/~tarunr/>
-
-- **
-
-### Publications/Reports
-
-
-### References
-- [Delling, D., Pajor, T. and Werneck, R.F., 2015. Round-based public transit routing. Transportation Science, 49(3), pp.591-604.](https://pubsonline.informs.org/doi/abs/10.1287/trsc.2014.0534) 
-- [Delling, D., Dibbelt, J., Pajor, T. and Zündorf, T., 2017. Faster transit routing by hyper partitioning. In 17th Workshop on Algorithmic Approaches for Transportation Modelling, Optimization, and Systems (ATMOS 2017). Schloss Dagstuhl-Leibniz-Zentrum fuer Informatik.](https://drops.dagstuhl.de/opus/volltexte/2017/7896/)
+- **Ziyi Dai** 
+- **Fizzy Fan**
