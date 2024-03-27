@@ -11,6 +11,5 @@
 *.geojson
 *.pkl
 *.csv
-*.zip
 *.gpkg
 *.dbf

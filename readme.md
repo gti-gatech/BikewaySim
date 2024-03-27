@@ -1,4 +1,69 @@
-# BikewaySimDev
+# BikewaySim (Development Version)
+
+BikewaySim is a collection of Python scripts used for assessing the network impacts from new cycling infrastructure. It is part of Reid Passmore's Ph.D. dissertation. BikewaySim is designed to work in all areas in the United States. This is the development version of BikewaySim, for the production version access: https://github.com/gti-gatech/BikewaySim
+
+## Main functionalities:
+1. Downloading and processing OpenStreetMap network data
+1. Calibrating link and turn impedance functions for cycling using bicycling GPS traces or count data
+1. Finding the shortest path for selected or all-to-all O-D pairs given custom link and turn impedance functions
+1. Processing shortest path results to generate several metrics for assessing the impacts of cycling infrastructure
+
+## Install instructions:
+1. Clone the repository into your desired directory
+```
+git clone https://github.com/reidx19/BikewayDev
+```
+1. Install conda by following the [instructions](https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html)
+1. Use conda's CLI, install an environment named "ox" and install the osmnx package, which includes most of the packages needed
+```
+conda create -n ox -c conda-forge --strict-channel-priority osmnx
+```
+1. Activate the 'ox' environment
+```
+conda activate ox
+```
+1. Install these additional packages:
+'''
+pip install partridge
+conda install tqdm
+'''
+1. Most of the code is excuted through Jupyter Notebooks which can be opened/run/edited through VS Code or Jupyter Notebook
+
+## Quick Start for Bike Routing
+1. Open [Downloading_OSM.ipynb](./osm_download/Downloading_OSM.ipynb) and follow the instructions to download OpenStreetMap network data
+1. Open [Step_1 Network_Filtering_and_Processing.ipynb](./network/Step_1_Network_Filtering.ipynb) to process OSM into network graph format and identify link types
+1. Open [Step_2_Network_Reconciliation.ipynb](./network/Step_2_Network_Reconciliation.ipynb) to finalize the network for routing
+1. Open [Run_BikewaySim.ipynb](./bikewaysim/Run_BikewaySim.ipynb) to perform aggregated shortest path routing and output Geopackage files to visualize in GIS software
+
+## Quick Start Bike-Transit Routing
+1. Open [Simulating%20Bike-Transit%20Trips.ipynb](./bike_transit/Simulating%20Bike-Transit%20Trips.ipynb) and walk through the steps until a study area is generated
+1. Open [Downloading_OSM.ipynb](./osm_download/Downloading_OSM.ipynb) and use the generated study area to download OpenStreetMap network data
+1. Continue with [Simulating%20Bike-Transit%20Trips.ipynb](./bike_transit/Simulating%20Bike-Transit%20Trips.ipynb)
+
+### List of Modules
+
+| Module                 | Description                | Status |
+|------------------------|----------------------------|---|
+| add_elevation_data     | Add USGS elevatoin data to a network | working  |
+| bike-transit           | Run aggregated bike-transit shortest path calculations | working |                    
+| run_bikewaysim         | Run aggregated cycling shortest path calculations | working |
+| gps_processing         | Process and map-match GPS trace data | in development  |   
+| impedance_calibration  | Use map-matched GPS traces to calirbate link impedance functions | in development |
+| network                | Process network data for shortest path routing          | working
+| osm_download           | Download OpenStreetMap network data             | working
+
+
+This Jupyter Notebook uses code from "osm_download_functions.py" to retrieve and export to file OSM geometry and attribute data for a GeoDataFrame's boundingbox. It also contains templates for examining the attribute completion of the OSM data and for visualizing where attribute data is complete. Once run, the data can be used in the network module.
+
+## gps_processing
+This module contains code for 
+
+## 
+
+## Assessing Bike-Transit Accessibility
+
+
+
 
 This version of the code was used for the NCST Report on "Simulating Bike-Transit Trips Using BikewaySim and TransitSim." This repository is composed of several scripts and jupyter notebooks necessary for running the analyses performed in that report. This readme will outline the steps needed to repeat the analyses done in that report and go over the contents of each file. For more detailed documentation, open up the file of interest to read through line comments.
 
@@ -33,3 +98,28 @@ The Jupyter notebook generates link impedances and prepares the reconciled netwo
 
 ## Step 4 Run BikewaySim.ipynb
 This final notebook runs the Dijkstra shortest path routing algorithm for the given OD pairs. Results are exported to file and processed to make the visualizations and metrics.
+
+### Authors
+- **Reid Passmore**
+    - Ph.D. Canddiate at the Georgia Institute of Technology
+    - 
+    - 
+    - <https://sites.google.com/view/reidpasssmore/>
+
+- **Ziyi
+
+- **Fizzy Fan
+
+- **Tarun Rambha**
+    - Assistant Professor in the Department of Civil Engineering and the Center for Infrastructure, Sustainable Transportation and Urban Planning (CiSTUP) at Indian Institute of Science (IISc) Bengaluru, India.
+    - Mail Id: tarunrambha@iisc.ac.in
+    - <http://civil.iisc.ernet.in/~tarunr/>
+
+- **
+
+### Publications/Reports
+
+
+### References
+- [Delling, D., Pajor, T. and Werneck, R.F., 2015. Round-based public transit routing. Transportation Science, 49(3), pp.591-604.](https://pubsonline.informs.org/doi/abs/10.1287/trsc.2014.0534) 
+- [Delling, D., Dibbelt, J., Pajor, T. and Zündorf, T., 2017. Faster transit routing by hyper partitioning. In 17th Workshop on Algorithmic Approaches for Transportation Modelling, Optimization, and Systems (ATMOS 2017). Schloss Dagstuhl-Leibniz-Zentrum fuer Informatik.](https://drops.dagstuhl.de/opus/volltexte/2017/7896/)

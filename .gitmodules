@@ -1,0 +1,3 @@
+[submodule "transitsim/transit-routing"]
+	path = transitsim/transit-routing
+	url = https://github.com/reidx19/transit-routing
