@@ -1,5 +1,5 @@
 # BikewaySim (Development Version)
-
+**NOTE: README IS NOT UPDATED**
 BikewaySim is a collection of Python scripts used for assessing the network impacts from new cycling infrastructure. It is part of Reid Passmore's Ph.D. dissertation. BikewaySim is designed to work in all areas in the United States. This is the development version of BikewaySim, for the production version access: https://github.com/gti-gatech/BikewaySim
 
 ## Main functionalities:

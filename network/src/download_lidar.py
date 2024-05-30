@@ -3,6 +3,7 @@ from pathlib import Path
 import pandas as pd
 from tqdm import tqdm
 import time
+import json
 
 #1271
 
@@ -65,7 +66,8 @@ if __name__ == "__main__":
     MAX_RETRIES = 3  # Maximum number of retries
     RETRY_DELAY = 60  # Delay in seconds between retries
     
-    url_file_path = Path.home() / "Documents/GitHub/BikewaySimDev/add_elevation_data/data.csv"  # Replace with your actual file path
-    output_directory = Path("D:/lidar_files")  # Replace with your desired output directory
+    config = json.load((Path.cwd().parent / 'config.json').open('rb'))
+    url_file_path = Path(config['usgs']) / 'lidar_links.csv' # Replace with your actual file path
+    output_directory = Path(config['usgs']) / 'lidar_files'  # Replace with your desired output directory
 
     download_laz_files(url_file_path, output_directory,MAX_RETRIES,RETRY_DELAY)

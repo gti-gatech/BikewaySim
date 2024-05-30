@@ -1,4 +1,3 @@
-*.json
 *.shp
 *.sbn
 *.sbx
@@ -13,3 +12,6 @@
 *.csv
 *.gpkg
 *.dbf
+config.json
+**/__pycache__/
+**/cache/

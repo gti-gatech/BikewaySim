@@ -32,12 +32,6 @@ def make_multidigraph(network_df, source='source', target='target', linkid ='lin
         edge_data['azimuth'] = row[5]
         MDG.add_edge(row[1], row[0], **edge_data)     
         
-        # #add reverse link if oneway is not true
-        # if row[3] == False:
-        #     edge_data['reverse_link'] = True 
-        #     #reverse the azimuth
-        #     edge_data['azimuth'] = row[5]
-        #     MDG.add_edge(row[1], row[0], **edge_data)
     return MDG
 
 def add_virtual_links(pseudo_df,pseudo_G,start_node:int,end_nodes:list):
@@ -57,7 +51,7 @@ def add_virtual_links(pseudo_df,pseudo_G,start_node:int,end_nodes:list):
     starting_set = pseudo_df.loc[pseudo_df['source_A'] == start_node,['source_A','source']].drop_duplicates()
     starting_set.columns = ['source','target']
 
-    #grab all pseudo graph edges that contain the starting node in the TARGET column (going towards the starting node)
+    #grab all pseudo graph edges that contain the starting node in the TARGET_B column (going towards the starting node)
     ending_set = pseudo_df.loc[pseudo_df['target_B'].isin(set(end_nodes)),['target','target_B']].drop_duplicates()
     ending_set.columns = ['source','target']
     
@@ -77,6 +71,37 @@ def remove_virtual_edges(pseudo_G,virtual_edges):
         pseudo_G.remove_edge(row[0],row[1])
     return pseudo_G
 
+def add_virtual_links_new(pseudo_df,pseudo_G,start_nodes:list,end_nodes:list):
+
+    '''
+    Adds directed virtual links with length 0 needed to perform routing on the pseudo-dual graph network graph.
+    
+    Input: turns dataframe, turn graph list of origin(s), list of destination(s)
+
+    Process:
+        - For origins: match to source_A and create an edge: origin node -> (source_linkid,source_reverse_direction)
+        - For destinations: match to target_B and create an edge: destination node -> (target_linkid,target_reverse_direction)
+        - Run remove_virtual links afterwards to remove these virtual links
+
+    '''    
+    #grab all pseudo graph edges that contain the starting node in the SOURCE_A column (going away from starting node)
+    starting_set = pseudo_df.loc[pseudo_df['source_A'].isin(set(start_nodes)),['source_A','source_linkid','source_reverse_link']].drop_duplicates().to_numpy()
+    ending_set = pseudo_df.loc[pseudo_df['target_B'].isin(set(end_nodes)),['target_linkid','target_reverse_link','target_B']].drop_duplicates().to_numpy()
+    #add virtual edges with list comp
+    edge_data = {'weight':0}
+    [pseudo_G.add_edge(row[0],(row[1],row[2]),**edge_data) for row in starting_set]
+    [pseudo_G.add_edge((row[0],row[1]),row[2],**edge_data) for row in ending_set]
+    
+    return pseudo_G, starting_set, ending_set
+
+def remove_virtual_links_new(pseudo_G,starting_set,ending_set):
+    '''
+    Reverses add_virtual_links
+    '''
+    [pseudo_G.remove_edge(row[0],(row[1],row[2])) for row in starting_set]
+    [pseudo_G.remove_edge((row[0],row[1]),row[2]) for row in ending_set]
+    return pseudo_G
+
 def find_azimuth(row):
     coords = np.array(row.geometry.coords)
     lat1 = coords[0,1]
@@ -92,7 +117,97 @@ def find_azimuth(row):
     # print('Distance:',distance)
     return pd.Series([np.round(fwd_azimuth,1) % 360, np.round(back_azimuth,1) % 360],index=['fwd_azimuth','bck_azimuth'])
 
-def create_pseudo_dual_graph(edges,source_col,target_col,linkid_col,oneway_col,keep_uturns=False):
+def create_pseudo_dual_graph(edges,source_col,target_col,linkid_col,oneway_col):
+    
+    #prevent name changing from happening on the orginal dataframe
+    edges = edges.copy()
+
+    #simplify column names and remove excess variables
+    edges.rename(columns={source_col:'source',target_col:'target',linkid_col:'linkid',oneway_col:'oneway'},inplace=True)
+    edges = edges[['source','target','linkid','oneway','geometry']]
+    
+    #re-calculate azimuth (now azimuth)
+    prev_crs = edges.crs
+    edges.to_crs('epsg:4326',inplace=True)
+    edges[['fwd_azimuth','bck_azimuth']] = edges.apply(lambda row: find_azimuth(row), axis=1)
+    edges.to_crs(prev_crs,inplace=True)
+    #edges['azimuth'] = edges.apply(lambda row: add_azimuth(row),axis=1)
+
+    #turn into undirected graph network with multiple edges
+    G = make_multidigraph(edges)
+    df_edges = nx.to_pandas_edgelist(G)
+
+    #use networkx line graph function to create pseudo dual graph
+    G_line = nx.line_graph(G)
+    df_line = nx.to_pandas_edgelist(G_line)
+
+    #get expanded tuples to columns for exporting purposes
+    df_line[['source_A','source_B','source_Z']] = pd.DataFrame(df_line['source'].tolist(), index=df_line.index)
+    df_line[['target_A','target_B','target_Z']] = pd.DataFrame(df_line['target'].tolist(), index=df_line.index)
+    
+    #drop the duplicate edges (these are addressed in the merge step)
+    #line_graph doesn't carry over the linkid, so it resets multi-edges to 0 or 1
+    #using edge lookup doesn't really speed this up
+    df_line.drop(columns=['source','target','source_Z','target_Z'],inplace=True)
+    df_line.drop_duplicates(inplace=True)
+
+    #merge df_edges and df_line to add linkid and reverse_link keys back in
+    df_line = df_line.merge(df_edges,left_on=['source_A','source_B'],right_on=['source','target'])
+    df_line.rename(columns={'linkid':'source_linkid',
+                            'reverse_link':'source_reverse_link',
+                            'azimuth':'source_azimuth'},inplace=True)
+    df_line.drop(columns=['source','target'],inplace=True)
+    
+    df_line = df_line.merge(df_edges,left_on=['target_A','target_B'],right_on=['source','target'])
+    df_line.rename(columns={'linkid':'target_linkid',
+                            'reverse_link':'target_reverse_link',
+                            'azimuth':'target_azimuth'},inplace=True)
+    df_line.drop(columns=['source','target'],inplace=True)
+    
+    #remove backtracking onto the same link (won't affect matching)
+    backtracking = df_line['source_linkid'] == df_line['target_linkid']#(df_line['source_A'] == df_line['target_B']) & (df_line['source_B'] == df_line['target_A'])
+    df_line = df_line[~backtracking]  
+    
+    #change in azimuth
+    df_line['azimuth_change'] = (df_line['target_azimuth'] - df_line['source_azimuth']) % 360
+    
+    #angle here
+    '''
+    straight < 30 or > 330
+    right >= 30 and <= 150
+    uturn > 150 and less than 210 could also be really sharp turns
+    left >= 210 and <= 270 
+    '''
+    straight = (df_line['azimuth_change'] > 330) | (df_line['azimuth_change'] < 30) 
+    right = (df_line['azimuth_change'] >= 30) & (df_line['azimuth_change'] <= 150)
+    backwards = (df_line['azimuth_change'] > 150) & (df_line['azimuth_change'] < 210)
+    left = (df_line['azimuth_change'] >= 210) & (df_line['azimuth_change'] <= 330)
+    
+    df_line.loc[straight,'turn_type'] = 'straight'
+    df_line.loc[right,'turn_type'] = 'right'
+    df_line.loc[backwards,'turn_type'] = 'uturn'
+    df_line.loc[left,'turn_type'] = 'left'
+
+    #create new source and target columns
+    df_line['source'] = tuple(zip(df_line['source_A'],df_line['source_B']))
+    df_line['target'] = tuple(zip(df_line['target_A'],df_line['target_B']))
+
+    #remove duplicate edges (duplicates still retained in df_edges and df_line)
+    #pseudo_df = df_line[['source','target']].drop_duplicates()
+    
+    #why did we not use linkid here?, it makes perfect sense, 
+
+    # #pseudo graph too
+    # # not sure how to have shortest path algorithm report back the currect multigraph result
+    # # instead we use pseudo_df to know which link pairs had the lowest cost
+    # pseudo_G = nx.DiGraph()
+    # for row in pseudo_df[['source','target']].itertuples(index=False):
+    #     edge_data = {'weight':1}
+    #     pseudo_G.add_edge(row[0], row[1],**edge_data)
+
+    return df_edges, df_line#, pseudo_G
+
+def create_turn_df(edges,source_col='source',target_col='target',linkid_col='linkid',oneway_col='oneway',keep_uturns=False):
     
     #simplify column names and remove excess variables
     edges.rename(columns={source_col:'source',target_col:'target',linkid_col:'linkid',oneway_col:'oneway'},inplace=True)
@@ -166,21 +281,19 @@ def create_pseudo_dual_graph(edges,source_col,target_col,linkid_col,oneway_col,k
     df_line['target'] = tuple(zip(df_line['target_A'],df_line['target_B']))
 
     #remove duplicate edges (duplicates still retained in df_edges and df_line)
-    pseudo_df = df_line[['source','target']].drop_duplicates()
-    
+    #pseudo_df = df_line[['source','target']].drop_duplicates()
+
+    return df_edges, df_line
+
+def make_turn_graph(df_line):
     #pseudo graph too
     # not sure how to have shortest path algorithm report back the currect multigraph result
     # instead we use pseudo_df to know which link pairs had the lowest cost
     pseudo_G = nx.DiGraph()
-    for row in pseudo_df[['source','target']].itertuples(index=False):
-        edge_data = {'weight':1}
-        pseudo_G.add_edge(row[0], row[1],**edge_data)
-
-    return df_edges, df_line, pseudo_G
-
-
-
-
+    df_line = df_line[['source_linkid','source_reverse_link','target_linkid','target_reverse_link']].drop_duplicates().to_numpy()
+    edge_data = {'weight':1}
+    [pseudo_G.add_edge((row[0],row[1]),(row[2],row[3]),**edge_data) for row in df_line]        
+    return pseudo_G
 
 
 # def add_azimuth(row):

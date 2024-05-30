@@ -1,0 +1,12 @@
+{
+    "code_directory":"C:/Users/tpassmore6/Documents/GitHub/BikewaySimDev",
+    "project_directory":"D:/PROJECTS/GDOT",
+    "studyarea":"D:/RAW/Study_Areas/itp.gpkg",
+    "geofabrik_fp":"D:/RAW/OSM/Geofabrik_GA_Extracts",
+    "here_fp":"D:/RAW/HERE/Streets.shp",
+    "abm_fp":"D:/RAW/ARC/rtp_amd6_2030_network.gdb",
+    "projected_crs_epsg":"epsg:2240",
+    "geofabrik_year": "2023",
+    "usgs": "D:/RAW/USGS",
+    "maptilerapikey":"get_ur_own_at_maptiler.com"
+}

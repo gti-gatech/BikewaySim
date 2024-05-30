@@ -17,41 +17,41 @@ def add_osm_attr(links,attr_fp):
     #turn oneway into boolean
     links['oneway'] = links['oneway'] == 'yes'
 
-    #new columns
-    columns_to_add = ['bl','pbl','mu','speed_mph','lanes']
+    # #new columns
+    # columns_to_add = ['bl','pbl','mu','speed_mph','lanes']
 
-    for col in columns_to_add:
-        links[col] = 0
+    # for col in columns_to_add:
+    #     links[col] = 0
 
-    # bike facils
-    # note that these mostly apply to atlanta and may need to modified for other areas    
+    # # bike facils
+    # # note that these mostly apply to atlanta and may need to modified for other areas    
 
-    #find bike lanes
-    #get all bike specific columns (find features with cycle, foot, or bike in tags but not motorcycle)
-    bike_columns = [x for x in links.columns.to_list() if (('cycle' in x) | ('bike' in x)) & ('motorcycle' not in x)]
-    foot_columns = [x for x in links.columns.to_list() if ('foot' in x)]
-    bike_columns = bike_columns + foot_columns
-    bl_cond = ((links[bike_columns] == 'lane').any(axis=1)) & (links['highway'] != 'cycleway')
-    #bl.to_file(Path.home() / 'Downloads/testing.gpkg', layer = 'bls')
+    # #find bike lanes
+    # #get all bike specific columns (find features with cycle, foot, or bike in tags but not motorcycle)
+    # bike_columns = [x for x in links.columns.to_list() if (('cycle' in x) | ('bike' in x)) & ('motorcycle' not in x)]
+    # foot_columns = [x for x in links.columns.to_list() if ('foot' in x)]
+    # bike_columns = bike_columns + foot_columns
+    # bl_cond = ((links[bike_columns] == 'lane').any(axis=1)) & (links['highway'] != 'cycleway')
+    # #bl.to_file(Path.home() / 'Downloads/testing.gpkg', layer = 'bls')
 
-    #anything that contains lane is a bike lane (class ii)
-    links.loc[bl_cond,'bl'] = 1
+    # #anything that contains lane is a bike lane (class ii)
+    # links.loc[bl_cond,'bl'] = 1
 
-    #find protected bike lanes (class iv)
-    if (links.columns == 'highway_1').any():
-        pbl_cond = (links['highway'] == 'cycleway') | links['highway_1']=='cycleway'#& (links['foot'] == 'no')
-    else:
-        pbl_cond = (links['highway'] == 'cycleway')
-    links.loc[pbl_cond, 'pbl'] = 1
+    # #find protected bike lanes (class iv)
+    # if (links.columns == 'highway_1').any():
+    #     pbl_cond = (links['highway'] == 'cycleway') | links['highway_1']=='cycleway'#& (links['foot'] == 'no')
+    # else:
+    #     pbl_cond = (links['highway'] == 'cycleway')
+    # links.loc[pbl_cond, 'pbl'] = 1
 
-    #find multi-use paths (class i)
-    mups = ['path','footway','pedestrian','steps']
-    mup_cond = (links['highway'].isin(mups)) | ((links['highway'] == 'cycleway') & (links['foot'] != 'no'))
-    links.loc[mup_cond, 'mu'] = 1
+    # #find multi-use paths (class i)
+    # mups = ['path','footway','pedestrian','steps']
+    # mup_cond = (links['highway'].isin(mups)) | ((links['highway'] == 'cycleway') & (links['foot'] != 'no'))
+    # links.loc[mup_cond, 'mu'] = 1
 
-    #conflict warning
-    if (links[['mu','pbl','bl']].sum(axis=1) > 1).any():
-        print('more than one bike facility detected')
+    # #conflict warning
+    # if (links[['mu','pbl','bl']].sum(axis=1) > 1).any():
+    #     print('more than one bike facility detected')
 
     #speed limit (come back to this)
     #change nones to NaN
@@ -97,7 +97,7 @@ def add_osm_attr(links,attr_fp):
     # links.drop(columns=['sidewalk'],inplace=True)
     # =============================================================================
 
-    final_cols = [] + columns_to_add
+    #final_cols = [] + columns_to_add
     #final_cols = [ network + '_' + x for x in final_cols]
     final_cols = ['osm_A','osm_B','osm_linkid','osmid','link_type','name','highway','oneway','bearing','bridge','tunnel'] + final_cols + ['geometry']
 

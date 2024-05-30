@@ -2,6 +2,7 @@ import requests
 from pathlib import Path
 import pandas as pd
 from tqdm import tqdm
+import json
 
 def download_laz_files(url_file, output_directory):
     
@@ -33,7 +34,9 @@ def download_laz_files(url_file, output_directory):
                 print(f"Failed to download {url}. Status code: {response.status_code}")
 
 if __name__ == "__main__":
-    url_file_path = Path.home() / 'Documents/GitHub/BikewaySimDev/add_elevation_data/dem_links.txt'  # Replace with your actual file path
-    output_directory = Path("D:/dem_files")  # Replace with your desired output directory
+    
+    config = json.load((Path.cwd().parent / 'config.json').open('rb'))
+    url_file_path = Path(config['usgs']) / 'dem_links.txt' # Replace with your actual file path
+    output_directory = Path(config['usgs']) / 'dem_files'  # Replace with your desired output directory
 
     download_laz_files(url_file_path, output_directory)

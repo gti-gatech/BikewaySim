@@ -3,7 +3,7 @@ import geopandas as gpd
 import numpy as np
 from leuvenmapmatching.matcher.distance import DistanceMatcher
 from leuvenmapmatching.map.inmem import InMemMap
-from leuvenmapmatching import visualization as mmviz
+#from leuvenmapmatching import visualization as mmviz
 import pickle
 import time
 import datetime
@@ -12,6 +12,11 @@ from tqdm import tqdm
 from shapely.ops import Point, LineString, MultiLineString
 import warnings
 import itertools
+import similaritymeasures
+
+
+
+
 from shapely.errors import ShapelyDeprecationWarning
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.simplefilter("ignore", category=ShapelyDeprecationWarning)
@@ -299,7 +304,7 @@ def leuven_match(trace:gpd.GeoDataFrame,matching_settings:dict,map_con,network_e
     #     nodes = matcher.path_pred_onlynodes
     #     match_ratio = last_matched / (len(gps_trace)-1)
     
-    #if still few matched points condsider it a failed match
+    #if less than 2 matched points condsider it a failed match
     if (last_matched < 2):
         return 'failed match'
 
@@ -325,6 +330,10 @@ def leuven_match(trace:gpd.GeoDataFrame,matching_settings:dict,map_con,network_e
     match_lines = trace[['sequence','match_lines']]
     match_lines = gpd.GeoDataFrame(match_lines,geometry='match_lines',crs=trace.crs)
     match_lines['length'] = match_lines.length
+
+    #TODO add frechet distance to this?
+    #need the edge geometry to do this
+
 
     #add to matched_traces dictionary
     results = {
@@ -438,7 +447,6 @@ def visualize_trips():
     return
 
 
-
 #todo display previous note about match if it's there from qaqc dict
 def visualize_match(tripid,match_dict,edges):
 
@@ -470,6 +478,9 @@ def visualize_match(tripid,match_dict,edges):
     gps_points['speed_mph'] = gps_points['speed_mph'].round(0)
     gps_points['acceleration_ft/s**2'] = gps_points['acceleration_ft/s**2'].round(2)
 
+    #set na values to -1 for now
+    gps_points.loc[gps_points['speed_mph'].isna(),'speed_mph'] = -1
+
     # Convert GeoDataFrames to GeoJSON
     matched_trip_geojson = matched_trip[['linkid','geometry']].to_crs(epsg='4326').to_json()
     gps_points_geojson = gps_points[['sequence','speed_mph','acceleration_ft/s**2','geometry']].to_crs(epsg='4326').to_json()
@@ -486,6 +497,7 @@ def visualize_match(tripid,match_dict,edges):
     # Add circles to the GPS Points FeatureGroup
     # Symbolize by speed and have it be a popup
     colormap = linear.YlOrRd_09.scale(gps_points['speed_mph'].min(),gps_points['speed_mph'].max())
+    
     folium.GeoJson(
         gps_points_geojson,
         name="GPS Points",
@@ -493,6 +505,7 @@ def visualize_match(tripid,match_dict,edges):
         tooltip=folium.GeoJsonTooltip(fields=['sequence','speed_mph','acceleration_ft/s**2']),
         popup=folium.GeoJsonPopup(fields=['sequence','speed_mph','acceleration_ft/s**2']),
         style_function= lambda feature: {
+            'radius': 7,
             'fillColor': colormap(feature['properties']['speed_mph']),
         },
         highlight_function=lambda feature: {"color":"yellow","weight":3}
@@ -554,6 +567,9 @@ def visualize_match(tripid,match_dict,edges):
 
     #TODO add in the legend with trip info and then we're golden
     return mymap
+
+
+
 
 
 # #%% load data

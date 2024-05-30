@@ -198,22 +198,29 @@ def filter_to_general(settings:dict,network_dict:dict):
             print('Provided linkid is not in the columns.')
             network_dict['linkid'] = None
         
+        #TODO change this so that linkids are not similar to osmid
         if links[network_dict['linkid']].duplicated().any():
             print('Provided linkid is not unique.')
+            network_dict['former_linkid'] = network_dict['linkid'] 
             network_dict['linkid'] = None
             
     if network_dict['linkid'] is not None:
         links.rename(columns={network_dict['linkid']:f'{network_name}_linkid'},inplace=True)
     else:
         print('Generating unique link ids.')
-        links.reset_index(inplace=True)
-        links.rename(columns={'index':f'{network_name}_linkid'},inplace=True)
-
+        if network_dict.get('former_linkid',0) != 0:
+            maxid = links[network_dict['former_linkid']].max()
+            links[f'{network_name}_linkid'] = list(range(maxid+1,maxid+1+len(links)))
+        else:
+            links.reset_index(inplace=True)
+            links.rename(columns={'index':f'{network_name}_linkid'},inplace=True)
+        
     #bring in or create nodes and add reference ids to links
     links, nodes = creating_nodes(links,settings,network_dict)
 
-    #export the attributes
-    links.drop(columns=['geometry']).to_pickle(settings['project_filepath']/f'networks/{network_name}_attr.pkl')
+    #export the attributes (deprecated, just use the original data without geometry to add in these attributes)
+    #the filepaths are now listed config file
+    #links.drop(columns=['geometry']).to_pickle(settings['project_filepath']/f'networks/{network_name}_attr.pkl')
 
     #initialize a link type column
     links['link_type'] = np.nan
@@ -221,6 +228,9 @@ def filter_to_general(settings:dict,network_dict:dict):
     return links, nodes
 
 def import_nodes(nodes_fp,nodes_layer,settings):
+    '''
+    Nodes are only used for transfering ids
+    '''
 
     if nodes_fp.suffix in ['.gpkg','.shp','.gdb','.gpkg']:        
         if nodes_layer is None:
@@ -297,19 +307,37 @@ def creating_nodes(links:gpd.GeoDataFrame,settings:dict,network_dict:dict):
     return links, nodes
     
 
-def remove_directed_links(links, network_name):
-    #remove directed links
+def remove_directed_links(links, A_col, B_col, linkid_col=None):
+    """
+    Uses the provided A, B, and linkid column to turn a dataframe
+    of directed edges into an undirected one. Assumes that the
+    geometry of a pair of directed edges are identical. This can pose
+    issues if this is not true as oneway links may not simplify to the
+    correct link direction.
+
+    Linkid column can be added to preserve multigraphs.
+
+    #TODO add a geometry based version?
+    """
+
+    links = links.copy().reset_index(drop=True)
+    
+    #sort by A_col and B_col
     df_dup = pd.DataFrame(
-        np.sort(links[[f"{network_name}_A",f"{network_name}_B"]], axis=1),
-            columns=[f"{network_name}_A",f"{network_name}_B"]
+        np.sort(links[[A_col,B_col]], axis=1),
+            columns=[A_col,B_col]
             )
 
-    #preserve directionality in column called 'bothways'
-    df_dup['bothways'] = df_dup.duplicated(keep=False)
-    df_dup = df_dup.drop_duplicates()
-    links = pd.merge(links,df_dup,how='inner', left_index = True, right_index = True,
-                    suffixes=(None,'_drop')).drop(columns={f'{network_name}_A_drop',f'{network_name}_B_drop'})
-    
+    #add linkid back in if provided (index should be the same)
+    if (linkid_col is None) == False:
+        df_dup[linkid_col] = links[linkid_col]
+
+    #create oneway column?
+    #preserve directionality in column called 'bothways' (not sure if this is needed)
+    #df_dup['bothways'] = df_dup.duplicated(keep=False)
+    df_dup.drop_duplicates(inplace=True)
+    links = links.loc[df_dup.index]
+
     return links
 
 # Extract Start and End Points as tuples and round to reduce precision
@@ -412,13 +440,22 @@ def filter_nodes(links,nodes,network_name):
     nodes_filt = nodes[nodes[f'{network_name}_N'].isin(nodes_in)]
     return nodes_filt
 
-def export(links,nodes,network_name,settings):
+def export(links,nodes,network_name,settings,network_dict):
+    '''
+    - Export the links and nodes into network.gpkg as layers
+    - Remove excess columns as this data is stored in a pkl
+    - If there was an old link id, retain that value for attribute merge
+    '''
     start = time.time()
-    #remove excess columns for now
-    links = links[[f'{network_name}_A',f'{network_name}_B',f'{network_name}_linkid','link_type','geometry']]
-    nodes = nodes[[f'{network_name}_N','geometry']]
+    #remove excess columns?
+    links_cols_to_keep = [f'{network_name}_A',f'{network_name}_B',f'{network_name}_linkid','link_type','geometry']
+    if network_dict.get("former_linkid",0) != 0:
+        links_cols_to_keep.append(network_dict['former_linkid'])
+    nodes_cols_to_keep = [f'{network_name}_N','geometry']
+    links = links[links_cols_to_keep]
+    nodes = nodes[nodes_cols_to_keep]
     #export
-    export_fp = settings['project_filepath'] / 'networks/filtered.gpkg'
+    export_fp = settings['project_filepath'] / 'networks.gpkg'
     links.to_file(export_fp,layer=f'{network_name}_links')
     nodes.to_file(export_fp,layer=f'{network_name}_nodes')
     end = time.time()

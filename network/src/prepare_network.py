@@ -100,7 +100,7 @@ def create_bws_nodes(nodes):
     
     return nodes
 
-def create_reverse_links(links):
+def create_reverse_links(links,allow_wrongway=False):
     '''
     This code creates a column that indicates the direction of links.
 
@@ -112,26 +112,29 @@ def create_reverse_links(links):
 
     links['wrongway'] = False
 
-    oneway = links['oneway'] == 'yes'
-    links_rev = links.rename(columns={'A':'B','B':'A'})
-    links_rev.loc[oneway,'wrongway'] = True
+    if allow_wrongway:
+        links_rev = links.copy().rename(columns={'A':'B','B':'A'})
+        links_rev.loc[links['oneway']==True] = True
+    else:
+        links_rev = links[links['oneway']==False].copy().rename(columns={'A':'B','B':'A'})
 
     #add to other links
     links = pd.concat([links,links_rev],ignore_index=True)
 
     return links
 
-def largest_comp_and_simplify(links,nodes,net_name=None): 
+def largest_comp_and_simplify(links,nodes,A='A',B='B',N='N'): 
     
-    #optional arguement
-    if net_name is not None:
-        A = net_name + '_A'
-        B = net_name + '_B'
-        N = net_name + '_N'
-    else:
-        A = 'A'
-        B = 'B'
-        N = 'N'
+    print('Before connected components: Links',links.shape[0],'Nodes',nodes.shape[0])
+    # #optional arguement
+    # if net_name is not None:
+    #     A = net_name + '_A'
+    #     B = net_name + '_B'
+    #     N = net_name + '_N'
+    # else:
+    #     A = 'A'
+    #     B = 'B'
+    #     N = 'N'
     
     #create undirected graph
     G = nx.Graph()  # create directed graph
@@ -152,6 +155,7 @@ def largest_comp_and_simplify(links,nodes,net_name=None):
     #get links
     links = links[links[A].isin(largest_cc) & links[B].isin(largest_cc)]
     
+    print('After connected components: Links',links.shape[0],'Nodes',nodes.shape[0])
     return links,nodes
     
 def link_costs(links:pd.DataFrame(),costs:dict,imp_name:str):
