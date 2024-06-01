@@ -55,7 +55,7 @@ that can be archived after optimization (not sure if this is possible)
 
 def match_results_to_ods(match_results):
     #for the shortest path routing step, takes match_results and gets all unique od pairs
-    ods = [(item['start_node'],item['end_node']) for key, item in match_results.items()]
+    ods = [(item['origin_node'],item['destination_node']) for key, item in match_results.items()]
     ods = np.unique(np.array(ods),axis=0)
     ods = [tuple(row) for row in ods]
     return ods
@@ -84,7 +84,7 @@ def impedance_calibration(betas:np.array,
         print('Negative Impedance Coefficient Detected')
         val = 0
         return val
-    print(betas)
+    #print(betas)
 
     #keep track of all the past betas used for visualization purposes
     past_betas.append(tuple(betas))
@@ -111,7 +111,7 @@ def impedance_calibration(betas:np.array,
 
     past_vals.append(val_to_minimize)
 
-    print(val_to_minimize)
+    print(betas,val_to_minimize)
     return val_to_minimize
 
     # if objective_function == "exact_overlap":
@@ -210,6 +210,7 @@ def impedance_path(turns,turn_G,o,d):
     d = int(d)
     
     turn_G, virtual_starts, virtual_ends = modeling_turns.add_virtual_links_new(turns,turn_G,[o],[d])
+
     length, edge_list = nx.single_source_dijkstra(turn_G,source=o,target=d,weight='weight')
     edge_list = edge_list[1:-1] #chop off the virtual nodes added
     turn_G = modeling_turns.remove_virtual_links_new(turn_G,virtual_starts,virtual_ends)
@@ -252,6 +253,7 @@ def impedance_update(betas:np.array,betas_links:dict,betas_turns:dict,
     updated_edge_costs = {((row[0],row[1]),(row[2],row[3])):row[4] for row in turns[cols].itertuples(index=False)}
     nx.set_edge_attributes(turn_G,values=updated_edge_costs,name='weight')
 
+
 def back_to_base_impedance(link_impedance_col,links,turns,turn_G):
     '''
     This function reverts the network graph back to base impedance (distance or travel time)
@@ -286,8 +288,64 @@ def exact_overlap(match_results,results_dict,**kwargs):
     
     for tripid, item in match_results.items():
 
-        start_node = item['start_node']
-        end_node = item['end_node']
+        start_node = item['origin_node']
+        end_node = item['destination_node']
+
+        #retrieve linkids in (linkid:int,reverse_link:boolean) format
+        chosen = [tuple(row) for row in match_results[tripid]['matched_edges'].to_numpy()]
+        modeled_edges = results_dict[(start_node,end_node)]['edge_list']
+
+        #get lengths (non-directional)
+        chosen_length = np.sum([kwargs['length_dict'][linkid[0]] for linkid in chosen])
+        #modeled_length = np.sum([kwargs['length_dict'][linkid[0]] for linkid in modeled_edges])
+
+        #convert to sets
+        chosen = set(chosen)
+        modeled_edges = set(modeled_edges)
+
+        #find intersection of sets
+        shared = list(set.intersection(chosen,modeled_edges))
+
+        #find intersection length
+        intersection_length = np.sum([kwargs['length_dict'][linkid[0]] for linkid in shared])
+
+        result.append((intersection_length,chosen_length))
+    
+    result = np.array(result)
+
+    if kwargs['standardize']:
+        #average intersect over chosen length
+        result = np.mean(result[:,0] / result[:,1])
+    else:
+        #total intersect over total chosen length
+        result = np.sum(result[:,0]) / np.sum(result)
+    
+    #return negative result because we want to minimize
+    return -result
+
+def first_preference_recovery(match_results,results_dict,**kwargs):
+    '''
+    Seen in Meister et al. 2024: https://doi.org/10.1016/j.jcmr.2024.100018
+
+    "FPR is the percentage of correct predictions assuming that the predicted choice
+    is the one with the highest choice probability"
+
+    In this case, we're just looking at the similarity between the modeled route
+    and the chosen route (not choice proababilities). A correct modeled route will
+    contain all of the links included in the map matched trip. An overlap threshold
+    controls what percentage of intersection between the chosen and modeled route is
+    needed to be considered a match. A 100% overlap threshold means that the modeled
+    route contains all of the links included in the chosen route. A 0% overlap threshold
+    means that the modeled route doesn't need to contain any of the other 
+
+    '''
+
+    result = []
+    
+    for tripid, item in match_results.items():
+
+        start_node = item['origin_node']
+        end_node = item['destination_node']
 
         #retrieve linkids in (linkid:int,reverse_link:boolean) format
         chosen = [tuple(row) for row in match_results[tripid]['matched_edges'].to_numpy()]
@@ -328,8 +386,8 @@ def buffer_overlap(match_results,results_dict,**kwargs):
     
     for tripid, item in match_results.items():
 
-        start_node = item['start_node']
-        end_node = item['end_node']
+        start_node = item['origin_node']
+        end_node = item['destination_node']
 
         #retrieve linkids in (linkid:int,reverse_link:boolean) format
         chosen = [tuple(row) for row in match_results[tripid]['matched_edges'].to_numpy()]
@@ -370,8 +428,8 @@ def frechet(match_results,results_dict,**kwargs):
     
     for tripid, item in match_results.items():
 
-        start_node = item['start_node']
-        end_node = item['end_node']
+        start_node = item['origin_node']
+        end_node = item['destination_node']
 
         #retrieve tuples of the format (linkid:int,reverse_link:boolean)
         chosen = [tuple(row) for row in match_results[tripid]['matched_edges'].to_numpy()]

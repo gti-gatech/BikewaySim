@@ -69,10 +69,12 @@ def calculate_adjusted_speed(links,flatspeed_mph):
     links['length_m'] = links['length_ft'] / 3.28
     #get the slope factor
     links['slope_factor'] = links.apply(lambda row: 
-        speedfactor.speedfactor(row['ascent_grade'],row['length_m']),axis=1)
+        speedfactor(row['ascent_grade_%'],row['length_m']),axis=1)
+
     links['adjusted_speed_kph'] = flatspeed_kph / links['slope_factor']
 
     links['travel_time_min'] = (links['length_m'] / 1000) / flatspeed_kph * 60
-    links['adj_travel_time_min'] = (links['length_m'] / 1000) / links['adjusted_speed_kph'] * 60
+    links['adj_travel_time_min'] = links['travel_time_min']
+    links.loc[links['adjusted_speed_kph'].notna(),'adjusted_speed_kph'] = (links['length_m'] / 1000) / links['adjusted_speed_kph'] * 60
 
-    return links
+    #return links
