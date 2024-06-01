@@ -330,13 +330,18 @@ def first_preference_recovery(match_results,results_dict,**kwargs):
     "FPR is the percentage of correct predictions assuming that the predicted choice
     is the one with the highest choice probability"
 
-    In this case, we're just looking at the similarity between the modeled route
-    and the chosen route (not choice proababilities). A correct modeled route will
-    contain all of the links included in the map matched trip. An overlap threshold
+    This has been modified to look at the similarity between the modeled route
+    and the chosen route instead of choice probabilities. A correct modeled route will
+    contain all or most of the links included in the map matched trip. An overlap threshold
     controls what percentage of intersection between the chosen and modeled route is
     needed to be considered a match. A 100% overlap threshold means that the modeled
     route contains all of the links included in the chosen route. A 0% overlap threshold
-    means that the modeled route doesn't need to contain any of the other 
+    means that the modeled route doesn't need to contain any of links in the chosen route
+    to count. Length is used to weight the overlap appropriately (i.e., missing short links
+    isn't as big of a deal as long ones).
+
+    This function returns a 1 or a 0 depending on the overlap threshold set. The average is
+    taken across all the trips, hence it will be between 0 and 1.
 
     '''
 
@@ -365,16 +370,25 @@ def first_preference_recovery(match_results,results_dict,**kwargs):
         #find intersection length
         intersection_length = np.sum([kwargs['length_dict'][linkid[0]] for linkid in shared])
 
-        result.append((intersection_length,chosen_length))
+        # result.append((intersection_length,chosen_length))
+        #result.append((intersection_length,chosen_length))
+
+        overlap_calc = intersection_length / chosen_length
+
+        if overlap_calc >= kwargs['overlap_threshold']:
+            result.append(1)
+        else:
+            result.append(0)
     
     result = np.array(result)
+    result = result.mean()
 
-    if kwargs['standardize']:
-        #average intersect over chosen length
-        result = np.mean(result[:,0] / result[:,1])
-    else:
-        #total intersect over total chosen length
-        result = np.sum(result[:,0]) / np.sum(result)
+    # if kwargs['standardize']:
+    #     #average intersect over chosen length
+    #     result = np.mean(result[:,0] / result[:,1])
+    # else:
+    #     #total intersect over total chosen length
+    #     result = np.sum(result[:,0]) / np.sum(result)
     
     #return negative result because we want to minimize
     return -result
