@@ -77,7 +77,7 @@ def impedance_calibration(betas:np.array,
                           objective_function_kwargs):
     
     #round the betas
-    betas = np.round(betas,1)
+    #betas = np.round(betas,1)
     
     #prevent negative link weights
     if (betas < 0).any():
@@ -107,7 +107,7 @@ def impedance_calibration(betas:np.array,
 
     #round the objective function value
     #TODO this should be objective function dependent
-    val_to_minimize = np.round(val_to_minimize,2)
+    val_to_minimize = np.round(val_to_minimize,4)
 
     past_vals.append(val_to_minimize)
 
@@ -233,7 +233,7 @@ def impedance_update(betas:np.array,betas_links:dict,betas_turns:dict,
     '''
     #update link costs
     links = link_impedance_function(betas, betas_links, links)
-    cost_dict = dict(zip(links['linkid'],links['link_cost']))
+    cost_dict = dict(zip(links['linkid'],links['reverse_link'],links['link_cost']))
     turns['source_link_cost'] = turns['source_linkid'].map(cost_dict)
     turns['target_link_cost'] = turns['target_linkid'].map(cost_dict)
 
@@ -241,12 +241,12 @@ def impedance_update(betas:np.array,betas_links:dict,betas_turns:dict,
     turns = turn_impedance_function(betas, betas_turns, turns)
 
     #cacluate new total cost and round to tenth place
-    turns['total_cost'] = (turns['source_link_cost'] + turns['target_link_cost'] + turns['turn_cost']).round(1)
+    turns['total_cost'] = (turns['source_link_cost'] + turns['target_link_cost'] + turns['turn_cost'])#.round(1)
 
     #round the rest too
-    turns['source_link_cost'] = turns['source_link_cost'].round(1)
-    turns['target_link_cost'] = turns['target_link_cost'].round(1)
-    turns['turn_cost'] = turns['turn_cost'].round(1)
+    # turns['source_link_cost'] = turns['source_link_cost']#.round(3)
+    # turns['target_link_cost'] = turns['target_link_cost']#.round(3)
+    # turns['turn_cost'] = turns['turn_cost']#.round(3)
 
     #update turn network graph with final cost
     cols = ['source_linkid','source_reverse_link','target_linkid','target_reverse_link','total_cost']
@@ -380,8 +380,9 @@ def first_preference_recovery(match_results,results_dict,**kwargs):
         else:
             result.append(0)
     
+    #TODO another interpretation could be percentage of all currect?
     result = np.array(result)
-    result = result.mean()
+    result = result.sum() / len(result)
 
     # if kwargs['standardize']:
     #     #average intersect over chosen length

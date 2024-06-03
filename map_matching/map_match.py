@@ -45,12 +45,10 @@ def prepare_network(edges,nodes,tolerance_ft):
 
     return exploded_edges, exploded_nodes, map_con
 
-def make_network(edges,nodes,allow_wrongway):
+def make_network(edges,nodes,allow_wrongway=False):
     '''
     Function for making network graph that is specific to leuven
     '''    
-    
-    #NEW VERSION ASSUMES DIRECTIONAL LINKS ARE ALREADY PROVIDED
     
     # create network graph needed for map matching (using a projected coordinate system so latlon false)
     map_con = InMemMap("network",use_latlon=False,use_rtree=True,index_edges=True)
@@ -64,6 +62,9 @@ def make_network(edges,nodes,allow_wrongway):
         # if (allow_wrongway == False) & (row['reverse_link'] == True) & (row['oneway'] == True):
         #     continue
         map_con.add_edge(row['source'], row['target'])
+
+        if (row['oneway'] == False) | (allow_wrongway==True):
+            map_con.add_edge(row['target'],row['source'])
             
     return map_con
 
@@ -100,7 +101,7 @@ def explode_network_midpoint(links,max_nodeid,max_linkid):
         #add these
         new_nodes[mid_id_forwards] = {
             'N': mid_id_forwards,
-            'reverse_link': row['reverse_link'],
+            #'reverse_link': row['reverse_link'],
             'geometry': mid_point
         }
         # new_nodes[mid_id_backwards] = {
@@ -119,7 +120,8 @@ def explode_network_midpoint(links,max_nodeid,max_linkid):
             'target': mid_id_forwards,
             'linkid': max_linkid+1,
             'source_linkid': row['linkid'],
-            'reverse_link': row['reverse_link'],
+            'oneway': row['oneway'],
+            #'reverse_link': row['reverse_link'],
             'geometry': first_line
 
         }
@@ -131,7 +133,8 @@ def explode_network_midpoint(links,max_nodeid,max_linkid):
             'target': B,
             'linkid': max_linkid+1,
             'source_linkid': row['linkid'],
-            'reverse_link': row['reverse_link'],
+            'oneway': row['oneway'],
+            #'reverse_link': row['reverse_link'],
             'geometry': second_line
 
         }
@@ -373,11 +376,12 @@ def post_process_bisected(nodes,exploded_edges):
     new_df = pd.DataFrame(edges, columns=['source', 'target'])
 
     #two merges, first adds any forward links and the second adds backwards links
-    merged_df = pd.merge(new_df,exploded_edges[['source','target','linkid','reverse_link']],on=['source','target'],how='left')
+    merged_df = pd.merge(new_df,exploded_edges[['source','target','linkid']],on=['source','target'],how='left')
+    #rev_links = pd.merge(new_df,exploded_edges[['source','target','linkid']],on=['source','target'],how='left')
     
     #NOTE only needed if not using a directed network already
-    #merged_df['reverse_link'] = merged_df['linkid'].isna()
-    #merged_df.loc[merged_df['linkid'].isna(),'linkid'] = pd.merge(new_df, exploded_edges[['source','target','linkid']], left_on=['target', 'source'], right_on=['source', 'target'], how='left')['linkid']
+    merged_df['reverse_link'] = merged_df['linkid'].isna()
+    merged_df.loc[merged_df['linkid'].isna(),'linkid'] = pd.merge(new_df, exploded_edges[['source','target','linkid']], left_on=['target', 'source'], right_on=['source', 'target'], how='left')['linkid']
 
     #create a mapping dict for replacing exploded link id with the source linkid
     mapping = exploded_edges[['linkid','source_linkid']].dropna()
