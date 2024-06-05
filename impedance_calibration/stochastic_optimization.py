@@ -71,10 +71,12 @@ def impedance_calibration(betas:np.array,
                           betas_links:dict,betas_turns:dict,
                           ods:list,match_results,
                           link_impedance_function,
+                          base_impedance_col,
                           turn_impedance_function,
                           links:pd.DataFrame,turns:pd.DataFrame,turn_G:nx.digraph,
                           loss_function,
-                          loss_function_kwargs):
+                          loss_function_kwargs,
+                          print_results):
     
     #round the betas
     #betas = np.round(betas,1)
@@ -90,10 +92,21 @@ def impedance_calibration(betas:np.array,
     past_betas.append(tuple(betas))
 
     #set link costs accordingly
+    #TODO think about how to make this work with the trip dates, thinking that it would loop through and update for each year
+    '''
+    Currently, I'm only using one attribute (the weight attribute, could instead have relevant attributes be stored on the graph?)
+    '''
+
     impedance_update(betas,betas_links,betas_turns,
                           link_impedance_function,
+                          base_impedance_col,
                           turn_impedance_function,
                           links,turns,turn_G)
+
+    #have a year arguement
+    #for year in years:
+    #impedance update
+    #do routing and update results dict
 
     #find least impedance path
     results_dict = {(start_node,end_node):impedance_path(turns,turn_G,start_node,end_node) for start_node, end_node in ods}
@@ -109,11 +122,13 @@ def impedance_calibration(betas:np.array,
 
     #round the objective function value
     #TODO this should be objective function dependent
-    val_to_minimize = np.round(val_to_minimize,4)
+    #val_to_minimize = np.round(val_to_minimize,4)
 
     past_vals.append(val_to_minimize)
 
-    print(betas,val_to_minimize)
+    #TODO add a toggle for this
+    if print_results:
+        print(list(betas.round(2))+[np.round(val_to_minimize,4)])
     return val_to_minimize
 
     # if loss_function == "exact_overlap":
@@ -227,17 +242,22 @@ def impedance_path(turns,turn_G,o,d):
 
 def impedance_update(betas:np.array,betas_links:dict,betas_turns:dict,
                      link_impedance_function,
+                     base_impedance_col,
                      turn_impedance_function,
                      links:pd.DataFrame,turns:pd.DataFrame,turn_G:nx.digraph):
     '''
     This function takes in the betas, impedance functions, and network objects
     and updates the network graph accordingly.
+
+    Need to think about how to incorporate infrastructure availability into this
     '''
     #update link costs
-    links = link_impedance_function(betas, betas_links, links)
-    cost_dict = dict(zip(links['linkid'],links['reverse_link'],links['link_cost']))
-    turns['source_link_cost'] = turns['source_linkid'].map(cost_dict)
-    turns['target_link_cost'] = turns['target_linkid'].map(cost_dict)
+    links = link_impedance_function(betas, betas_links, links, base_impedance_col)
+    #create cost dict (i think this is the fastest python way to do this?)
+    tuple_index = tuple(zip(links['linkid'],links['reverse_link']))
+    cost_dict = dict(zip(tuple_index,links['link_cost']))
+    turns['source_link_cost'] = turns[['source_linkid','source_reverse_link']].apply(lambda x: cost_dict.get(tuple(x.values),False),axis=1)
+    turns['target_link_cost'] = turns[['target_linkid','target_reverse_link']].apply(lambda x: cost_dict.get(tuple(x.values),False),axis=1)
 
     #update turn costs
     turns = turn_impedance_function(betas, betas_turns, turns)
@@ -316,6 +336,9 @@ def jaccard_index(match_results,results_dict,**kwargs):
         
         # get lengths
         intersection_length = np.sum([kwargs['length_dict'][linkid[0]] for linkid in intersection])
+        for linkid in union:
+            if kwargs['length_dict'].get(linkid[0],False) == False:
+                print(linkid[0])
         union_length = np.sum([kwargs['length_dict'][linkid[0]] for linkid in union])
         jaccard_index = intersection_length / union_length
 
@@ -379,9 +402,9 @@ def first_preference_recovery(match_results,results_dict,**kwargs):
         overlap_calc = intersection_length / chosen_length
 
         if overlap_calc >= kwargs['overlap_threshold']:
-            result.append(1)
-        else:
-            result.append(0)
+            result.append(tripid)
+        # else:
+        #     result.append(tripid,False)
     
     #TODO another interpretation could be percentage of all currect?
     result = np.array(result)
