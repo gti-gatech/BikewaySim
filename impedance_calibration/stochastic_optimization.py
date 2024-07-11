@@ -78,15 +78,8 @@ def impedance_calibration(betas:np.array,
                           loss_function_kwargs,
                           print_results):
     
-    #round the betas
-    #betas = np.round(betas,1)
-    
-    #square the betas to prevent negative values?
-    # if (betas < 0).any():
-    #     print('Negative Impedance Coefficient Detected')
-    #     val = 0
-    #     return val
-    betas = np.abs(betas)
+    #don't allow negative betas for now
+    #betas = np.abs(betas)
 
     #keep track of all the past betas used for visualization purposes
     past_betas.append(tuple(betas))
@@ -97,32 +90,34 @@ def impedance_calibration(betas:np.array,
     Currently, I'm only using one attribute (the weight attribute, could instead have relevant attributes be stored on the graph?)
     '''
 
-    impedance_update(betas,betas_links,betas_turns,
+    test = impedance_update(betas,betas_links,betas_turns,
                           link_impedance_function,
                           base_impedance_col,
                           turn_impedance_function,
                           links,turns,turn_G)
-
+    
+    if test == False:
+        return np.nan
+    
     #have a year arguement
     #for year in years:
     #impedance update
     #do routing and update results dict
 
     #find least impedance path
-    results_dict = {(start_node,end_node):impedance_path(turns,turn_G,start_node,end_node) for start_node, end_node in ods}
+    results_dict = {(start_node,end_node):impedance_path(turns,turn_G,links,start_node,end_node) for start_node, end_node in ods}
 
     #calculate the objective function
     #want to be able to provide the objective function and objective func arguements
     #print('calculating objective function')
     loss_values = loss_function(match_results,results_dict,**loss_function_kwargs)
+    loss_values = loss_values[:,1]
 
     #convert loss values to objective function
     #TODO have a seperate process for this too?
     val_to_minimize = -1 * loss_values.mean()
 
     #round the objective function value
-    #TODO this should be objective function dependent
-    #val_to_minimize = np.round(val_to_minimize,4)
 
     past_vals.append(val_to_minimize)
 
@@ -221,14 +216,18 @@ def impedance_calibration(betas:np.array,
 
 ########################################################################################
 
-def impedance_path(turns,turn_G,o,d):
+def impedance_path(turns,turn_G,links,o,d):
     #NOTE: without these it'll throw a 'the result is ambiguous error'
     o = int(o)
     d = int(d)
     
-    turn_G, virtual_starts, virtual_ends = modeling_turns.add_virtual_links_new(turns,turn_G,[o],[d])
+    turn_G, virtual_starts, virtual_ends = modeling_turns.add_virtual_links_new(turns,turn_G,links,[o],[d])
 
-    length, edge_list = nx.single_source_dijkstra(turn_G,source=o,target=d,weight='weight')
+    try:
+        length, edge_list = nx.single_source_dijkstra(turn_G,source=o,target=d,weight='weight')
+    except:
+        return {'length':np.nan, 'edge_list':[]}
+    
     edge_list = edge_list[1:-1] #chop off the virtual nodes added
     turn_G = modeling_turns.remove_virtual_links_new(turn_G,virtual_starts,virtual_ends)
     return {'length':np.round(length,1), 'edge_list':edge_list}
@@ -256,25 +255,30 @@ def impedance_update(betas:np.array,betas_links:dict,betas_turns:dict,
     #create cost dict (i think this is the fastest python way to do this?)
     tuple_index = tuple(zip(links['linkid'],links['reverse_link']))
     cost_dict = dict(zip(tuple_index,links['link_cost']))
-    turns['source_link_cost'] = turns[['source_linkid','source_reverse_link']].apply(lambda x: cost_dict.get(tuple(x.values),False),axis=1)
+    #turns['source_link_cost'] = turns[['source_linkid','source_reverse_link']].apply(lambda x: cost_dict.get(tuple(x.values),False),axis=1)
     turns['target_link_cost'] = turns[['target_linkid','target_reverse_link']].apply(lambda x: cost_dict.get(tuple(x.values),False),axis=1)
 
     #update turn costs
     turns = turn_impedance_function(betas, betas_turns, turns)
 
     #cacluate new total cost and round to tenth place
-    turns['total_cost'] = (turns['source_link_cost'] + turns['target_link_cost'] + turns['turn_cost'])#.round(1)
+    turns['total_cost'] = (turns['target_link_cost'] + turns['turn_cost'])#.round(1)turns['source_link_cost'] + 
 
     #round the rest too
     # turns['source_link_cost'] = turns['source_link_cost']#.round(3)
     # turns['target_link_cost'] = turns['target_link_cost']#.round(3)
     # turns['turn_cost'] = turns['turn_cost']#.round(3)
 
+    #check for negative link impedance
+    if (links['link_cost'] < 0).any() | (turns['total_cost'] < 0).any():
+        return False
+
     #update turn network graph with final cost
     cols = ['source_linkid','source_reverse_link','target_linkid','target_reverse_link','total_cost']
     updated_edge_costs = {((row[0],row[1]),(row[2],row[3])):row[4] for row in turns[cols].itertuples(index=False)}
     nx.set_edge_attributes(turn_G,values=updated_edge_costs,name='weight')
 
+    return True
 
 def back_to_base_impedance(link_impedance_col,links,turns,turn_G):
     '''
@@ -285,11 +289,11 @@ def back_to_base_impedance(link_impedance_col,links,turns,turn_G):
     #update link costs
     links['link_cost'] = links[link_impedance_col]
     cost_dict = dict(zip(links['linkid'],links['link_cost']))
-    turns['source_link_cost'] = turns['source_linkid'].map(cost_dict)
+    #turns['source_link_cost'] = turns['source_linkid'].map(cost_dict)
     turns['target_link_cost'] = turns['target_linkid'].map(cost_dict)
 
     #cacluate new total cost
-    turns['total_cost'] = (turns['source_link_cost'] + turns['target_link_cost'])
+    turns['total_cost'] =  turns['target_link_cost'] #(turns['source_link_cost'] +
 
     #update turn network graph with final cost
     cols = ['source_linkid','source_reverse_link','target_linkid','target_reverse_link','total_cost']
@@ -339,11 +343,12 @@ def jaccard_index(match_results,results_dict,**kwargs):
         for linkid in union:
             if kwargs['length_dict'].get(linkid[0],False) == False:
                 print(linkid[0])
-        union_length = np.sum([kwargs['length_dict'][linkid[0]] for linkid in union])
+        #union_length = np.sum([kwargs['length_dict'][linkid[0]] for linkid in union])
+        union_length = np.sum([kwargs['length_dict'].get(linkid[0],0) for linkid in union])
         jaccard_index = intersection_length / union_length
 
         # append
-        result.append(jaccard_index)
+        result.append([tripid,jaccard_index])
     
     result = np.array(result)
 
@@ -514,6 +519,123 @@ def retrieve_coordinates(link,geo_dict):
 
 ########################################################################################
 
+# Impedance Functions
+
+########################################################################################
+
+'''
+Currently works with binary and numeric variables. Categorical data will have to be
+cast into a different format for now.
+
+Link impedance is weighted by the length of the link, turns are just the impedance associated
+'''
+
+# def link_impedance_function_1(betas,beta_links,links,base_impedance_col):
+#     #prevent mutating the original links gdf
+#     links = links.copy()
+    
+#     #multiplier = np.zeros(links.shape[0])
+#     links["multiplier"] = 0
+    
+#     links.loc[links['link_type']=='road','multiplier'] = \
+#     (beta_links['lanes'] * links['lanes']) + \
+#     (beta_links['speed'] * links['speed']) + \
+#     (beta_links['bike_lane'] * links['bike_lane'])
+    
+#     links.loc[links['link_type']=='bike','multiplier'] = \
+#     (beta_links[])
+
+#     #grade
+#     links.loc[:,'multiplier'] = links.loc[:,'multiplier'] + (beta_links[''])
+
+
+#     if len(beta_links) > 0:
+#         #assumes that these effects are additive
+#         #TODO i think this can be done as a matrix product
+#         for key, item in beta_links.items():
+#             multiplier = multiplier + (betas[key] * links[item].values)
+    
+#         links['link_cost'] = links[base_impedance_col] * (1 + multiplier) #removeing the + 1 for now
+
+#     else:
+#         links['link_cost'] = links[base_impedance_col]
+
+#     return links
+
+
+def link_impedance_function(betas,beta_links,links,base_impedance_col):
+    #prevent mutating the original links gdf
+    #links = links.copy()
+    
+    multiplier = np.zeros(links.shape[0])
+    
+    if len(beta_links) > 0:
+        #assumes that these effects are additive
+        #TODO i think this can be done as a matrix product
+        for key, item in beta_links.items():
+            multiplier = multiplier + (betas[key] * links[item].values)
+        links['link_cost'] = links[base_impedance_col] * (1 + multiplier) #removeing the + 1 for now
+
+    else:
+        links['link_cost'] = links[base_impedance_col]
+
+    return links
+
+def turn_impedance_function(betas,beta_turns,turns):
+    #use beta coefficient to calculate turn cost
+    # base_turn_cost = 30 # from Lowry et al 2016 DOI: http://dx.doi.org/10.1016/j.tra.2016.02.003
+    # turn_costs = {
+    #     'left': betas[1] * base_turn_cost,
+    #     'right': betas[1] * base_turn_cost,
+    #     'straight': betas[1] * base_turn_cost
+    # }
+    #turns['turn_cost'] = turns['turn_type'].map(turn_costs)
+
+    turns = turns.copy()
+    turns['turn_cost'] = 0
+
+    if len(beta_turns) > 0:
+        #instance impedance
+        for key, item in beta_turns.items():
+            turns['turn_cost'] = turns['turn_cost'] + (betas[key] * turns[item])
+
+    #not sure if needed
+    turns['turn_cost'] = turns['turn_cost'].astype(float)
+
+    return turns
+
+########################################################################################
+
+# Post Calibration Functions
+
+########################################################################################
+
+def post_calibration_routing(
+        links,
+        turns,
+        turn_G,
+        base_impedance_col,
+        betas,
+        betas_links,
+        betas_turns,
+        ods,
+        results_dict
+    ):
+
+    #base_impedance_col = "travel_time_min"
+    back_to_base_impedance(base_impedance_col,links,turns,turn_G)
+    impedance_update(betas,betas_links,betas_turns,
+                            link_impedance_function,
+                            base_impedance_col,
+                            turn_impedance_function,
+                            links,turns,turn_G)
+    
+    #find shortest path
+    routing_results = {(start_node,end_node):impedance_path(turns,turn_G,links,start_node,end_node) for start_node, end_node in ods}
+    results_dict.update(routing_results)
+
+########################################################################################
+
 # Visualization
 
 ########################################################################################
@@ -577,6 +699,197 @@ def visualize_three_no_legend(chosen_line,shortest_line,modeled_line):
     folium.LayerControl().add_to(mymap)
 
     return mymap  # Uncomment if you are using Jupyter notebook
+
+# def visualize_route_attributes(
+#         tripid,
+#         results_dict, # contains the edge list etc
+#         matched_gdf,
+#         modeled_gdf,
+#         links_df,
+#         turns_df,
+#         nodes_df,
+#         route_attribute_cols,
+#         ):
+
+#     '''
+#     This function displays the matched vs shortest/modeled route for a particular trip
+#     It also displays the trip characteristics side be side and plots the any signalized
+#     intersections and stressful turns passed through.
+#     '''
+
+#     # Create copies to prevent alteration
+#     matched_gdf = matched_gdf.copy()
+#     modeled_gdf = modeled_gdf.copy()
+
+#     # Subset data to relevant trip
+#     matched_gdf = matched_gdf[matched_gdf['tripid']==tripid]
+#     modeled_gdf = modeled_gdf[modeled_gdf['tripid']==tripid]
+    
+#     # Create a Folium map centered around the mean of the matched route
+#     minx, miny, maxx, maxy = matched_gdf.to_crs(epsg='4326').total_bounds
+#     x_mean = (maxx - minx) / 2 + minx
+#     y_mean = (maxy - miny) / 2 + miny
+#     center = [y_mean,x_mean]
+#     m = folium.Map(location=center, zoom_start=14, tiles="cartodbpositron")
+    
+#     # Add GeoJSON data to FeatureGroups
+#     folium.GeoJson(matched_gdf.to_crs(epsg='4326').to_json(),
+#                    name='Matched',
+#                    tooltip=folium.GeoJsonTooltip(fields=route_attribute_cols),
+#                    style_function=lambda x: {'color': 'red'}).add_to(m)
+    
+#     folium.GeoJson(modeled_gdf.to_crs(epsg='4326').to_json(),
+#                    name='Modeled',
+#                    tooltip=folium.GeoJsonTooltip(fields=route_attribute_cols),
+#                    style_function=lambda x: {'color': 'blue'}).add_to(m)
+
+#     # Get the start and end points
+#     start_node = results_dict[tripid]['origin_node']
+#     start_node = nodes_df.to_crs('epsg:4326').loc[nodes_df['N']==start_node,'geometry'].item()
+
+#     end_node = results_dict[tripid]['destination_node']
+#     end_node = nodes_df.to_crs('epsg:4326').loc[nodes_df['N']==end_node,'geometry'].item()
+
+#     # Add start and end points with play and stop buttons to map
+#     #start_icon = folium.Icon(color='green',icon='play',prefix='fa')
+#     #end_icon = folium.Icon(color='red',icon='stop',prefix='fa')
+#     folium.Marker(location=[start_pt.y, start_pt.x],color='green').add_to(m)
+#     folium.Marker(location=[end_pt.y, end_pt.x],color='red').add_to(m)
+
+#     # Add signals and turns for matched route
+
+#     edges = match_dict[tripid]['edges']
+#     list_of_edges = list(zip(edges['linkid'],edges['reverse_link']))
+#     list_of_turns = [(list_of_edges[i][0],list_of_edges[i][1],list_of_edges[i+1][0],list_of_edges[i+1][1]) for i in range(0,len(list_of_edges)-1)]
+
+
+#     #from these we want to get the locations and number of singalized intersections and stressful crossing passed through
+    
+#     df_of_turns = pd.DataFrame(list_of_turns,columns=['source_linkid','source_reverse_link','target_linkid','target_reverse_link'])
+#     subset = pseudo_df.merge(df_of_turns,on=['source_linkid','source_reverse_link','target_linkid','target_reverse_link'])
+
+#     # from this subset we can get the right node ids
+#     #TODO turns should be by edges probably?
+#     #turns = subset[['source_B','turn_type']]
+#     signals = subset.loc[subset['signalized']==True,'source_B'].value_counts()
+#     two_way_stops = subset.loc[subset['unsignalized']==True,'source_B'].value_counts()
+
+#     #and then get the correct rows of the gdf
+#     #turns = nodes.merge(signals,left_on='N',right_on='')
+#     signals = nodes.merge(signals,left_on='N',right_index=True)
+#     signals.columns = ['N','geometry','num_times']
+#     two_way_stops = nodes.merge(two_way_stops,left_on='N',right_index=True)
+#     two_way_stops.columns = ['N','geometry','num_times']
+
+#     # get the start and end point for plotting
+#     start_N = gdf.loc[gdf['tripid']==tripid,'start'].item()
+#     start_pt = nodes.to_crs('epsg:4326').loc[nodes['N']==start_N,'geometry'].item()
+#     end_N = gdf.loc[gdf['tripid']==tripid,'end'].item()
+#     end_pt = nodes.to_crs('epsg:4326').loc[nodes['N']==end_N,'geometry'].item()
+
+
+
+
+
+ 
+#    # Add FeatureGroups to the map
+
+
+#    if signals.shape[0] > 0:
+#       signals_geojson = signals.to_crs(epsg='4326').to_json()
+#       signals_fg = FeatureGroup(name='Signals')
+
+#       folium.GeoJson(
+#       signals_geojson,
+#       name="Traffic Signal Turn Movement",
+#       marker=folium.Circle(radius=20, fill_color="red", fill_opacity=.5, color="black", weight=1),
+#       tooltip=folium.GeoJsonTooltip(fields=['N','num_times']),
+#       popup=folium.GeoJsonPopup(fields=['N','num_times']),
+#       #    style_function= lambda feature: {
+#       #        'fillColor': colormap(feature['properties']['speed_mph']),
+#       #    },
+#       highlight_function=lambda feature: {"color":"yellow","weight":3}
+#       ).add_to(signals_fg)
+#       signals_fg.add_to(mymap)
+
+#    if two_way_stops.shape[0] > 0:
+#       two_way_stops_geojson = two_way_stops.to_crs(epsg='4326').to_json()
+#       two_way_stops_fg = FeatureGroup(name='Two Way Stop (chosen)')
+
+#       folium.GeoJson(
+#       two_way_stops_geojson,
+#       name="Two Way Stop with High Stress Cross Street",
+#       marker=folium.Circle(radius=20, fill_color="yellow", fill_opacity=.5, color="black", weight=1),
+#       tooltip=folium.GeoJsonTooltip(fields=['N','num_times']),
+#       popup=folium.GeoJsonPopup(fields=['N','num_times']),
+#       #    style_function= lambda feature: {
+#       #        'fillColor': colormap(feature['properties']['speed_mph']),
+#       #    },
+#       highlight_function=lambda feature: {"color":"yellow","weight":3}
+#       ).add_to(two_way_stops_fg)
+
+#       two_way_stops_fg.add_to(mymap)
+
+
+
+
+#    #autofit content not in this version?
+#    #folium.FitOverlays().add_to(mymap)
+
+#    # Add layer control to toggle layers on/off
+#    folium.LayerControl().add_to(mymap)
+
+#    #retrive overlap
+#    exact_overlap = gdf.loc[gdf['tripid']==tripid,'shortest_exact_overlap_prop'].item()
+#    buffer_overlap = gdf.loc[gdf['tripid']==tripid,'shortest_buffer_overlap'].item()
+
+#    attr = gdf.loc[gdf['tripid']==tripid].squeeze()
+
+#    # Add legend with statistics
+#    legend_html = f'''
+#    <div style="position: fixed; 
+#             bottom: 5px; left: 5px; width: 300px; height: 500px; 
+#             border:2px solid grey; z-index:9999; font-size:14px;
+#             background-color: white;
+#             opacity: 0.9;">
+#    &nbsp; <b>Tripid: {tripid}</b> <br>
+#    &nbsp; Start Point &nbsp; <i class="fa fa-play" style="color:green"></i><br>
+#    &nbsp; End Point &nbsp; <i class="fa fa-stop" style="color:red"></i><br>
+#    &nbsp; Exact Overlap: {exact_overlap*100:.2f}% <br>
+#    &nbsp; Buffer Overlap: {buffer_overlap*100:.2f}% <br>
+
+#    &nbsp; Trip Type: {attr['trip_type']} <br>
+#    &nbsp; Length (mi): {attr['length_ft']/5280:.0f} <br>
+#    &nbsp; Age: {attr['age']} <br>
+#    &nbsp; Gender: {attr['gender']} <br>
+#    &nbsp; Income: {attr['income']} <br>
+#    &nbsp; Ethnicity: {attr['ethnicity']} <br>
+#    &nbsp; Cycling Frequency: {attr['cyclingfreq']} <br>
+#    &nbsp; Rider History: {attr['rider_history']} <br>
+#    &nbsp; Rider Type: {attr['rider_type']} <br><br>
+
+#    &nbsp; Residential %: {attr['highway.residential']*100:.2f}% <br>
+#    &nbsp; Secondary %: {attr['highway.secondary']*100:.2f}% <br>
+#    &nbsp; Tertiary %: {attr['highway.tertiary']*100:.2f}% <br>
+
+#    &nbsp; # of bridges: {int(attr['bridge'])} <br>
+#    &nbsp; # of left turns: {int(attr['left'])} <br>
+#    &nbsp; # of straight turns: {int(attr['straight'])} <br>
+#    &nbsp; # of right turns: {int(attr['right'])} <br>
+#    &nbsp; # of stressful turns: {int(attr['unsignalized'])} <br>
+#    &nbsp; # of signalized turns: {int(attr['signalized'])} <br>
+
+#    </div>
+#    '''
+
+#    mymap.get_root().html.add_child(folium.Element(legend_html))
+
+#    # Save the map to an HTML file or display it in a Jupyter notebook
+#    #mymap.save('map.html')
+#    # mymap.save('/path/to/save/map.html')  # Use an absolute path if needed
+#    return mymap  # Uncomment if you are using Jupyter notebook
+
+   #TODO add in the legend with trip info and then we're golden
 
 
 

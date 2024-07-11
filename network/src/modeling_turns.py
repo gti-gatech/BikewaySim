@@ -34,7 +34,7 @@ def make_multidigraph(network_df, source='source', target='target', linkid ='lin
         
     return MDG
 
-def add_virtual_links(pseudo_df,pseudo_G,start_node:int,end_nodes:list):
+def add_virtual_links(pseudo_df,pseudo_G,links_df,start_node:int,end_nodes:list):
 
     '''
     Adds directed virtual links with length 0 needed to perform routing on the pseudo-dual graph network graph.
@@ -51,17 +51,22 @@ def add_virtual_links(pseudo_df,pseudo_G,start_node:int,end_nodes:list):
     starting_set = pseudo_df.loc[pseudo_df['source_A'] == start_node,['source_A','source']].drop_duplicates()
     starting_set.columns = ['source','target']
 
+    #add starting virtual edges
+    for row in starting_set[['source','target']].itertuples(index=False):
+        weight = links_df.at[(links_df['linkid']==row[1][0]) & (links_df['reverse_link']==row[1][1]),'link_cost']
+        edge_data = {'weight':weight}
+        pseudo_G.add_edge(row[0],row[1],**edge_data)
+
     #grab all pseudo graph edges that contain the starting node in the TARGET_B column (going towards the starting node)
     ending_set = pseudo_df.loc[pseudo_df['target_B'].isin(set(end_nodes)),['target','target_B']].drop_duplicates()
     ending_set.columns = ['source','target']
     
-    virtual_edges = pd.concat([starting_set,ending_set],ignore_index=True)
-    
-    #add virtual edge
-    for row in virtual_edges[['source','target']].itertuples(index=False):
+    #add ending virtual edges
+    for row in ending_set[['source','target']].itertuples(index=False):
         edge_data = {'weight':0}
         pseudo_G.add_edge(row[0],row[1],**edge_data)
-    return pseudo_G, virtual_edges
+
+    return pseudo_G, pd.concat([starting_set,ending_set],ignore_index=True)
 
 def remove_virtual_edges(pseudo_G,virtual_edges):
     '''
@@ -71,7 +76,7 @@ def remove_virtual_edges(pseudo_G,virtual_edges):
         pseudo_G.remove_edge(row[0],row[1])
     return pseudo_G
 
-def add_virtual_links_new(pseudo_df,pseudo_G,start_nodes:list,end_nodes:list):
+def add_virtual_links_new(pseudo_df,pseudo_G,links_df,start_nodes:list,end_nodes:list):
 
     '''
     Adds directed virtual links with length 0 needed to perform routing on the pseudo-dual graph network graph.
@@ -87,9 +92,16 @@ def add_virtual_links_new(pseudo_df,pseudo_G,start_nodes:list,end_nodes:list):
     #grab all pseudo graph edges that contain the starting node in the SOURCE_A column (going away from starting node)
     starting_set = pseudo_df.loc[pseudo_df['source_A'].isin(set(start_nodes)),['source_A','source_linkid','source_reverse_link']].drop_duplicates().to_numpy()
     ending_set = pseudo_df.loc[pseudo_df['target_B'].isin(set(end_nodes)),['target_linkid','target_reverse_link','target_B']].drop_duplicates().to_numpy()
+    
+    #add starting virtual edges
+    for row in starting_set:
+        weight = links_df.loc[(links_df['linkid']==row[1]) & (links_df['reverse_link']==row[2]),'link_cost'].tolist()[0]
+        edge_data = {'weight':weight}
+        pseudo_G.add_edge(row[0],(row[1],row[2]),**edge_data)
+    
     #add virtual edges with list comp
     edge_data = {'weight':0}
-    [pseudo_G.add_edge(row[0],(row[1],row[2]),**edge_data) for row in starting_set]
+    # [pseudo_G.add_edge(row[0],(row[1],row[2]),**edge_data) for row in starting_set]
     [pseudo_G.add_edge((row[0],row[1]),row[2],**edge_data) for row in ending_set]
     
     return pseudo_G, starting_set, ending_set

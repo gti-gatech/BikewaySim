@@ -441,16 +441,6 @@ from folium.map import FeatureGroup
 from branca.colormap import linear
 
 
-# 
-def visualize_trips():
-    '''
-    This function takes in three or more trip results and displays them
-    accordingly
-    '''
-
-    return
-
-
 #todo display previous note about match if it's there from qaqc dict
 def visualize_match(tripid,match_dict,edges):
 

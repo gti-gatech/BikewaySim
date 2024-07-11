@@ -27,7 +27,105 @@ from itertools import permutations
 from shapely.geometry import MultiLineString
 from shapely.ops import linemerge
 
+import string
+
 import src.network_filter
+
+########################################################################################
+
+# Street Name Check
+
+########################################################################################
+
+
+import string
+
+# List of common suffixes and their abbreviated forms
+suffixes = {
+    'street': ['st'],
+    'avenue': ['ave'],
+    'boulevard': ['blvd'],
+    'drive': ['dr'],
+    'lane': ['ln'],
+    'road': ['rd'],
+    'court': ['ct'],
+    'circle': ['cir'],
+    'way': ['wy'],
+    'place': ['pl']
+    # Add more suffixes and their abbreviations as needed
+}
+
+# Function to remove suffixes from street names
+def remove_suffix(street_name):
+    
+    if street_name is None:
+        return None
+
+    # Lowercase evertyhing
+    street_name = street_name.lower()
+
+    # remove periods
+    street_name = street_name.translate(str.maketrans('','',string.punctuation))
+
+    # Split the street name into words
+    words = street_name.split()
+
+    # Remove directional indicators
+    directions = ['north', 'south', 'east', 'west', 'northeast', 'southeast', 'northwest', 'southwest', 'n', 'e', 's', 'w', 'ne', 'se', 'nw', 'sw','wb']
+    for direction in directions:
+        words = [word for word in words if word.lower() != direction]
+
+    # Remove suffixes
+    for suffix, abbreviations in suffixes.items():
+        # Remove full suffix
+        if words[-1].lower().endswith(suffix):
+            words[-1] = words[-1][:-(len(suffix))]
+        # Remove abbreviated suffix
+        for abbr in abbreviations:
+            if words[-1].lower().endswith(abbr):
+                words[-1] = words[-1][:-(len(abbr))]
+
+    # Reconstruct the street name with spaces
+    cleaned_street_name = ' '.join(words)
+    return cleaned_street_name.strip()  # Remove any leading or trailing whitespace
+
+
+def name_check(name1,name2):
+    if (name1 is None) | (name2 is None):
+        return False
+    name1_words = name1.split()
+    name2_words = name2.split()
+    #check if any part of the name is right
+    check1 = [True for name1_word in name1_words if name1_word in name2_words]
+    #check2 = [True if name2_word in name1_words else False for name2_word in name2_words]
+    if len(check1) > 0:
+        return True
+    else:
+        return False
+
+########################################################################################
+
+# Line Similararity
+
+########################################################################################
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 def rename_geo(gdf:gpd.GeoDataFrame,name:str,type:str):
     '''
