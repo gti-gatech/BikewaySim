@@ -574,6 +574,7 @@ def link_impedance_function(betas,beta_links,links,base_impedance_col):
         #TODO i think this can be done as a matrix product
         for key, item in beta_links.items():
             multiplier = multiplier + (betas[key] * links[item].values)
+        links['multiplier'] = multiplier
         links['link_cost'] = links[base_impedance_col] * (1 + multiplier) #removeing the + 1 for now
 
     else:
