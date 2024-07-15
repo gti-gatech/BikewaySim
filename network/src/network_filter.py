@@ -166,9 +166,9 @@ def network_import(settings:dict,network_dict:dict):
     if links.crs != settings['project_crs']:
         links.to_crs(settings['project_crs'],inplace=True)
 
-    #create filepath and add base_layers.gpkg
-    if Path(settings['project_filepath'],'networks').exists() == False:
-        Path(settings['project_filepath'],'networks').mkdir()
+    # #create filepath and add base_layers.gpkg
+    # if Path(settings['project_filepath'],'networks').exists() == False:
+    #     Path(settings['project_filepath'],'networks').mkdir()
 
     studyarea_bounds.to_file(Path(settings['project_filepath'],'base_layers.gpkg'),layer='studyarea_bounds')
 

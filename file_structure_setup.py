@@ -3,6 +3,9 @@ from pathlib import Path
 
 '''
 Function used to add filepaths to config json
+
+#TODO, use this to copy the bat/sh scripts to the osm directory?
+
 '''
 
 def filepaths():

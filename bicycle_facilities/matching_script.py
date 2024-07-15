@@ -34,6 +34,11 @@ def remove_suffix(street_name):
     
     if street_name is None:
         return None
+    if isinstance(street_name,float) | isinstance(street_name,int):
+        if (np.isnan(street_name)):
+            return None
+    if street_name == '':
+        return None
 
     # Lowercase evertyhing
     street_name = street_name.lower()

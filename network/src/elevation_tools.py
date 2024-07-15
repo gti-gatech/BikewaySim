@@ -4,11 +4,235 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import geopandas as gpd
 import contextily as cx
+import rasterio
+from shapely.geometry import box, mapping
+import requests
+from tqdm import tqdm
+import laspy
+import time
 
 #code credit
 #https://github.com/geopandas/geopandas/issues/2279
 #https://stackoverflow.com/questions/8247973/how-do-i-specify-an-arrow-like-linestyle-in-matplotlib
 from IPython.display import display, clear_output
+
+def sample_lidar(bridge_linkids,interpolated_points_dict,lidar_points,dem_crs):
+    #create spatial index
+    spatial_index = lidar_points.sindex
+
+    for linkid in tqdm(bridge_linkids):
+        
+        item = interpolated_points_dict.get(linkid)
+
+        geometry = [Point(x,y) for x,y in item['geometry']]
+        gdf = gpd.GeoDataFrame({'geometry':geometry},crs=dem_crs)
+
+        #buffer the data
+        buffer_m = 20
+        gdf.geometry = gdf.buffer(buffer_m)
+
+        #get the gdf bounding box
+        polygon = gdf.geometry.unary_union.convex_hull
+        
+        #use spatial index to only select a small number of points
+        possible_matches_index = list(spatial_index.intersection(polygon.bounds))
+        possible_matches = lidar_points.iloc[possible_matches_index]
+        
+        #add an index column for the overlay part
+        gdf.reset_index(inplace=True)
+        precise_matches = gpd.overlay(possible_matches,gdf,how='intersection')
+
+        #take average of all nearby values
+        lidar_values = precise_matches.groupby('index')['elevation_m'].mean()
+        gdf['new_elevation_m'] = gdf['index'].map(lidar_values)
+        lidar_values = np.array(gdf['new_elevation_m'])
+
+        #use nanmax (do this)
+        #new_elevations = np.nanmax([lidar_values,item['elevations']],axis = 0)
+
+        #output = elevation_tools.elevation_stats(item['distances'],lidar_values,grade_threshold)
+
+        #replace existing values
+        #interpolated_points_dict[linkid]['elevations'] = new_elevations
+        interpolated_points_dict[linkid].update({'lidar_values':lidar_values})
+
+def replace_with_lidar(interpolated_points_dict):
+    for linkid, item in interpolated_points_dict.items():
+        if item.get('lidar_values',0) != 0:
+            new_elevations = np.nanmax([item['lidar_values'],item['elevations']],axis = 0)
+            interpolated_points_dict[linkid]['elevations'] = new_elevations
+
+
+def download_with_retry(url,MAX_RETRIES,RETRY_DELAY):
+    retries = 0
+    while retries < MAX_RETRIES:
+        try:
+            response = requests.get(url, timeout=10)  # Set your desired timeout
+            response.raise_for_status()  # Raise an HTTPError for bad responses
+            return response
+        except requests.exceptions.Timeout:
+            print(f"Timeout error for {url}. Retrying...")
+            retries += 1
+            time.sleep(RETRY_DELAY)
+        except requests.exceptions.RequestException as e:
+            print(f"Error for {url}: {e}")
+            break
+
+    print(f"Failed to download {url} after {MAX_RETRIES} retries.")
+    return None
+
+
+def get_bridge_decks(lidar_urls):
+    bridge_decks = []
+    
+    for i, lidar_url in enumerate(lidar_urls):
+        
+        # if bridge_decks.get(lidar_url,0)!=0:
+        #     print('Already exists')
+        #     continue
+
+        response = download_with_retry(lidar_url,10,20)
+        if response == None:
+            continue
+        
+        las = laspy.read(response.content)
+
+        if (las.classification == 17).any():
+            print("Bridge deck found",f"({i+1}/{len(lidar_urls)})")
+            # 17 is used for bridge decks https://www.usgs.gov/ngp-standards-and-specifications/lidar-base-specification-tables
+            x = np.array(las.x[las.classification == 17])
+            y = np.array(las.y[las.classification == 17])
+            z = np.array(las.z[las.classification == 17])
+            geometry = [Point(x1,y1) for x1, y1 in zip(x,y)]
+            geom_value = list(zip(geometry,z))
+            bridge_decks = bridge_decks + geom_value
+        else:
+            print("No bridge deck",f"({i+1}/{len(lidar_urls)})")
+
+    if len(bridge_decks) > 0:
+        bridge_decks_gdf = gpd.GeoDataFrame(bridge_decks,columns=['geometry','elevation_m'],geometry='geometry',crs=las.header.parse_crs())
+        bridge_decks_gdf.to_crs('epsg:4326',inplace=True)
+        return bridge_decks_gdf
+    else:
+        return None
+
+
+def interpolate_points(links,interpolate_dist_m):
+
+    interpolated_points_dict = {}
+
+    #takes around 47 seconds for network the size of ITP
+    for index, row in links.iterrows():
+        
+        line = row.geometry
+
+        interpolated_points = []
+        interpolated_distances = []
+
+        #start with interpolate_dist_m and add +interpolate_dist_m until current_dist_m is longer than the line
+        current_dist_m = interpolate_dist_m
+
+        while current_dist_m < line.length:
+            interpolated_point = line.interpolate(current_dist_m)
+            interpolated_points += [mapping(interpolated_point)['coordinates']]
+            interpolated_distances.append(current_dist_m)
+            current_dist_m += interpolate_dist_m
+
+        coords = line.coords
+        first_point = coords[0]
+        last_point = coords[-1]
+        
+        # only use first and last point if the line is less than interpolate_dist_m
+        if line.length <= interpolate_dist_m:
+            interpolated_points = [first_point,last_point]
+            distances = [0,line.length]
+        else:
+            interpolated_points = [first_point] + interpolated_points #+ [last_point]
+            distances = [0] + interpolated_distances #+ [line.length]
+        
+        #TODO maybe just store these all as one array?
+        interpolated_points_dict[index] = {
+            'geometry': np.array(interpolated_points),
+            'distances': np.array(distances),
+            # create array of nan values to fill with elevation (m) sampled from the tiff using nanmax
+            #UPDATE nanmax doesn't like two np.nans so using -999 instead
+            'elevations': np.array([-99999 for x in range(0,len(interpolated_points))])
+        }
+
+    return interpolated_points_dict
+
+def get_dem_urls(gdf):
+    '''
+    Accepts a geodataframe and returns 1-m USGS DEM TIFF download links
+    that touch the unary union + envelope of the geodataframe
+    '''
+    gdf_coords = list(gdf.unary_union.envelope.exterior.coords)
+    gdf_coords = [f"{round(lon,4)}%20{round(lat,4)}" for lon, lat in gdf_coords]
+    gdf_coords = ','.join(gdf_coords)
+    url = f"https://tnmaccess.nationalmap.gov/api/v1/products?polygon={gdf_coords}&datasets=Digital%20Elevation%20Model%20%28DEM%29%201%20meter&prodExtents=&prodFormats=GeoTIFF&outputFormat=JSON"
+    response = requests.get(url).json()['items']
+    urls = [item['downloadURL'] for item in response if 'Statewide' in item['downloadURL']]
+    
+    return urls
+
+def get_lidar_urls(gdf):
+    '''
+    Accepts a geodataframe and returns USGS LiDAR LAZ download links
+    that touch the unary union + envelope of the geodataframe
+    '''
+    gdf_coords = list(gdf.unary_union.envelope.exterior.coords)
+    gdf_coords = [f"{round(lon,4)}%20{round(lat,4)}" for lon, lat in gdf_coords]
+    gdf_coords = ','.join(gdf_coords)
+    url = f"https://tnmaccess.nationalmap.gov/api/v1/products?polygon={gdf_coords}&datasets=Lidar%20Point%20Cloud%20%28LPC%29&prodExtents=&prodFormats=LAS%2CLAZ&outputFormat=JSON"
+    response = requests.get(url).json()['items']
+    urls = [item['downloadURL'] for item in response]
+    return urls
+
+
+def download_dem(urls,output_fp):
+
+    for i, url in enumerate(urls):
+        url = url.strip()
+        file_name = url.split('/')[-1]
+        file_fp = output_fp / file_name
+
+        if file_fp.exists():
+            print(f"File {url.split('/')[-1]} already exists. ({i+1}/{len(urls)})")
+        else:
+            print(f"Downloading {url.split('/')[-1]}... ({i+1}/{len(urls)})")
+            response = requests.get(url)
+
+        if response.status_code == 200:
+            with open(file_fp, 'wb') as output_file:
+                output_file.write(response.content)
+            #print("Download successful.")
+        else:
+            print(f"Failed to download {url}. Status code: {response.status_code}")
+
+
+def sample_elevation(tiff_url,links,interpolated_points_dict):
+   #open the raster using the link
+    src = rasterio.open(tiff_url)
+
+    #find all links that intersect with the current raster
+    xmin, ymin, xmax, ymax = src.bounds
+    bbox = box(xmin,ymin,xmax,ymax)
+    intersection = links.intersects(bbox)
+
+    if (intersection == True).any():
+        #print('intersection detected')
+        for index in links[intersection].index:
+            dict_values = interpolated_points_dict.get(index)
+
+            sampled = np.array([val[0] for val in src.sample(dict_values['geometry'])])
+            
+            # deal with na values (because the default nan value is -99999)
+            #sampled[sampled < 0] = -99999
+
+            #if at least one non-null value
+            if np.isnan(sampled).all() == False:
+                interpolated_points_dict[index]['elevations'] = np.nanmax([sampled,dict_values['elevations']],axis=0).round(1) 
+
 
 def point_knockout(item,grade_threshold):
     df_og = pd.DataFrame({'distance':item['distances'],'elevation':item['elevations']})
@@ -34,12 +258,6 @@ def point_knockout(item,grade_threshold):
     #change elevations in dict
     item['elevations'] = df_og['elevation'].to_numpy()
 
-    # #fit a spline
-    # spline = splrep(df['distance'], df['elevation'], s=0.5)
-
-    # #add spline to dict
-    # item['spline'] = spline
-
 
 def exceeds_threshold(selected_linkids,interpolated_points_dict,grade_threshold):
     '''
@@ -53,7 +271,7 @@ def exceeds_threshold(selected_linkids,interpolated_points_dict,grade_threshold)
         output = elevation_stats(item['distances'],item['elevations'],grade_threshold)
         if len(output['bad_ascent_grades']) > 0 | len(output['bad_descent_grades']) > 0:
             exceeds_threshold.append(linkid)
-    print(len(exceeds_threshold),'/',len(interpolated_points_dict),'links exceed the threshold')
+    #print(len(exceeds_threshold),'/',len(interpolated_points_dict),'links exceed the threshold')
     return exceeds_threshold
 
 def simple_elevation_stats(distances,elevations,unit='m'):
@@ -279,7 +497,7 @@ def visualize(links,dem_crs,interpolated_points_dict,list_of_linkids,grade_thres
         #https://stackoverflow.com/questions/42483449/mapbox-gl-js-export-map-to-png-or-pdf
 
         name = links.loc[links['osmid']==linkid,'name'].item()
-        plt.suptitle(f'{name} ({linkid}) vertical profile (avg ascent grade = {output['ascent_grade']}, descent grade = {output['descent_grade']})')
+        plt.suptitle(f"{name} ({linkid}) vertical profile (avg ascent grade = {output['ascent_grade']}, descent grade = {output['descent_grade']})")
         
         #just display that one
         if one_off:  
