@@ -54,12 +54,12 @@ def sample_lidar(bridge_linkids,interpolated_points_dict,lidar_points,dem_crs):
 
         #replace existing values
         #interpolated_points_dict[linkid]['elevations'] = new_elevations
-        interpolated_points_dict[linkid].update({'lidar_values':lidar_values})
+        interpolated_points_dict[linkid].update({'lidar':lidar_values})
 
 def replace_with_lidar(interpolated_points_dict):
     for linkid, item in interpolated_points_dict.items():
         if item.get('lidar_values',0) != 0:
-            new_elevations = np.nanmax([item['lidar_values'],item['elevations']],axis = 0)
+            new_elevations = np.nanmax([item['lidar'],item['elevations']],axis = 0)
             interpolated_points_dict[linkid]['elevations'] = new_elevations
 
 
@@ -364,6 +364,11 @@ def visualize(links,dem_crs,interpolated_points_dict,list_of_linkids,grade_thres
     
     Nodes exceeding the grade threshold (going in the foward direction are highlighted).
     '''
+    #TODO:
+    # change orinetation of link to be horizontal using azimuth
+    # stack maps vertically instead of horizontally
+    # have a parameter for controlling vertical exaggeration
+    # pull in the raster data for visualization
 
     fig, (ax1,ax2,ax3) = plt.subplots(ncols=3,figsize=(12,5))
 
@@ -456,6 +461,7 @@ def visualize(links,dem_crs,interpolated_points_dict,list_of_linkids,grade_thres
         # sub-divide intervals w.r.t. Ns
         subdiv = lambda z, Ns=Ns: np.concatenate([ np.linspace(z[ii], z[ii+1], Ns[ii]) for ii, _ in enumerate(z[:-1]) ])
         x_coord, y_coord = subdiv(x_coord), subdiv(y_coord)
+        
         ax2.quiver(x_coord[:-1], y_coord[:-1], x_coord[1:]-x_coord[:-1], y_coord[1:]-y_coord[:-1], scale_units='xy', angles='xy', scale=1, width=.004, headlength=4, headwidth=4)
         ax3.quiver(x_coord[:-1], y_coord[:-1], x_coord[1:]-x_coord[:-1], y_coord[1:]-y_coord[:-1], scale_units='xy', angles='xy', scale=1, width=.004, headlength=4, headwidth=4)
 

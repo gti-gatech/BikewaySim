@@ -123,6 +123,29 @@ def create_reverse_links(links,allow_wrongway=False):
 
     return links
 
+
+def largest_comp_and_simplify_fast(links,A='A',B='B'): 
+    
+    nodes_count = links[A].append(links[B]).nunique()
+    print('Before connected components: Links',links.shape[0],'Nodes',nodes_count)
+    
+    #create undirected graph
+    G = nx.Graph()  # create directed graph
+    for row in links[[A,B]].itertuples(index=False):
+        # forward graph, time stored as minutes
+        G.add_edges_from([(row[0],row[1])])
+
+    #only keep largest component
+    largest_cc = max(nx.connected_components(G), key=len)
+
+    #get links
+    links = links[links[A].isin(largest_cc) & links[B].isin(largest_cc)]
+    
+    nodes_count = links[A].append(links[B]).nunique()
+    print('After connected components: Links',links.shape[0],'Nodes',nodes_count)
+    return links
+
+
 def largest_comp_and_simplify(links,nodes,A='A',B='B',N='N'): 
     
     print('Before connected components: Links',links.shape[0],'Nodes',nodes.shape[0])
