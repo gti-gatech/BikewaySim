@@ -3,8 +3,6 @@ This module was used for assigning approximate installation/ribbon dates to the 
 
 These facility types and dates are attached to the [2023-01-01 Geofabrik PBF extract of Georgia, USA](https://download.geofabrik.de/north-america/us/georgia-230101.osm.pbf). To re-create this network, follow the steps in the `osm_download` module.
 
-This module contains several Jupyter notebooks for processing OSM data over between 2012-2016 (2012-2013 were created from the 2024-04-22 OSM history dump because Geofabrik extracts only go back to 2014). See `history-extract.ipynb` for this process (in development). 
-
 ## The cities that are at least partially within I-285 that we need bike facility data for:
 - Atlanta
 - Sandy Springs
@@ -29,8 +27,7 @@ This module contains several Jupyter notebooks for processing OSM data over betw
     - Buffered lanes (Ponce de Leon)
 
 - **Class III Bike Facilities / Sharrows / Signed Bike Routes**
-    - If easily available
-    - Bicycle boulevards? (not sure if any)
+    - Not in consideration for this project
 
 - **Class IV Bike Facilities**
     - Anything on the street and with some form of physical barrier
@@ -39,7 +36,7 @@ This module contains several Jupyter notebooks for processing OSM data over betw
 
 ## Non-considered
 - **Non-motorized paths that are not PATH Foundations/BeltLine funded**
-    - These will still be treated as Class I facilities for routing purposes
+    - Not really sure how to treat these yet as variables
     - Includes Piedmont/Central/Grant Park and Georgia Tech/Emory Paths
     - Assume that these have remained constant over time
 
@@ -64,20 +61,23 @@ This is a semi-automated process. Suggested matches are prepared using scripting
 
 ## Steps:
 1. Process OSM and **ARC/CoA/Garber** data
-    1. Drop all features that are post-2016
-
-1. Filter 2014-2024 OSM network to **2023 OSM bicycle network**
-    1. Subject to updates because tagging standards are not universal
+    1. Assign a standardized facility type: sharrow, bike lane, buffered bike lane, cycletrack, multi use path
 
 1. Suggested matches from **ARC/CoA/Garber** to **2023 OSM bicycle network**
     1. Buffer **2023 OSM bicycle network**
     1. Intersect with other data source (default = 100 feet)
     1. Check street name where applicable to eliminate one-to-many matches
+    1. Check if the bicycle infrastructure matches make sense (e.g. a multi use path matching to a bike lane)
+    1. Use street name to accept/eliminate most suggested matches (eliminates a lot of work)
+    1. Compare the OSM geometry to the intersected ARC/CoA feature and calculate the Hausdorff distance
+    1. Export and finish the rest of the matches in QGIS?
+    
+    
     1. Replace intersect geometry with **2023 OSM bicycle network** geometry
     1. If bike lane or sharrow, use street name to pre-accept/reject matches
     
     
-    1. Use street name to pre-accept most suggested matches (eliminates a lot of work)
+    
     1. Visually inspect remaining matches in QGIS and determine whether to accept or reject them
     1. Once all matches are one-to-one and appear correct, join to the final **2023 OSM network**
 

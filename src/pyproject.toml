@@ -1,0 +1,5 @@
+[project]
+name = "bikewaysim"
+version = "0.1.0"
+authors = [{name = "Reid Passmore", email = "tanner.passmore@gatech.edu"}]
+description = "Supporting code for BikewaySim notebooks and scripts."

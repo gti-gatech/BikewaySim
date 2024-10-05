@@ -1,33 +1,38 @@
 # BikewaySim (Development Version)
-**NOTE: README IS NOT UPDATED**
-BikewaySim is a collection of Python scripts used for assessing the network impacts from new cycling infrastructure. It is part of Reid Passmore's Ph.D. dissertation. BikewaySim is designed to work in all areas in the United States. This is the development version of BikewaySim, for the production version access: https://github.com/gti-gatech/BikewaySim
+BikewaySim is a data science project used for assessing the impedance reduction from new cycling infrastructure. It is part of Reid Passmore's Ph.D. dissertation. BikewaySim is currently intended to work in the continental United States.
+
+This is the development version of BikewaySim, for the production version access: https://github.com/gti-gatech/BikewaySim
+
 
 ## Main functionalities:
-1. Downloading and processing OpenStreetMap network data
-1. Calibrating link and turn impedance functions for cycling using bicycling GPS traces or count data
+1. Downloading and processing OpenStreetMap network data for bicycle routing using Geofabrik and OSMnx
+1. Calibrating link and turn impedance functions for cycling using bicycling GPS traces or count data using stochopy
 1. Finding the shortest path for selected or all-to-all O-D pairs given custom link and turn impedance functions
-1. Processing shortest path results to generate several metrics for assessing the impacts of cycling infrastructure
+1. Processing shortest path results to generate several metrics for assessing the impacts of planned cycling infrastructure
 
 ## Install instructions:
-1. Clone the repository into your desired directory
+- Clone the repository into your desired directory
 ```
 git clone https://github.com/reidx19/BikewayDev
 ```
-1. Install conda by following the [instructions](https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html)
-1. Use conda's CLI, install an environment named "ox" and install the osmnx package, which includes most of the packages needed
+- Install conda to set up a Python virtual environment by following the [instructions](https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html)
+- Using conda's CLI, install the invluded environment named `environment.yml` and name it `bikewaysim`
 ```
-conda create -n ox -c conda-forge --strict-channel-priority osmnx
+conda create env -n bikewaysim environment.yml
 ```
-1. Activate the 'ox' environment
+- Activate the 'bikewaysim' environment
 ```
-conda activate ox
+conda activate bikewaysim
 ```
-1. Install these additional packages:
-'''
-pip install partridge
-conda install tqdm
-'''
-1. Most of the code is excuted through Jupyter Notebooks which can be opened/run/edited through VS Code or Jupyter Notebook
+- Navigate to the `BikewaySim/src` folder on conda CLI and install the development package `bikewaysim`
+```
+pip install -e .
+```
+- Great! Everything should be installed!
+- Most of the code is excuted through Jupyter Notebooks which can be opened/run/edited through VS Code or Jupyter Notebook, just make sure your conda environment is activated.
+## Running Instructions
+
+1. 
 
 ## Quick Start for Bike Routing
 1. Open [Downloading_OSM.ipynb](./osm_download/Downloading_OSM.ipynb) and follow the instructions to download OpenStreetMap network data
@@ -100,7 +105,6 @@ The Jupyter notebook generates link impedances and prepares the reconciled netwo
 This final notebook runs the Dijkstra shortest path routing algorithm for the given OD pairs. Results are exported to file and processed to make the visualizations and metrics.
 
 ### Authors
-- **Reid Passmore**
-    - Ph.D. Canddiate at the Georgia Institute of Technology
+- **Reid Passmore**: Ph.D. Canddiate at the Georgia Institute of Technology
 - **Ziyi Dai** 
 - **Fizzy Fan**
