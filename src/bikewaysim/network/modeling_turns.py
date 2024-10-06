@@ -95,6 +95,7 @@ def add_virtual_links_new(pseudo_df,pseudo_G,links_df,start_nodes:list,end_nodes
     ending_set = pseudo_df.loc[pseudo_df['target_B'].isin(set(end_nodes)),['target_linkid','target_reverse_link','target_B']].drop_duplicates().to_numpy()
     
     #add starting virtual edges
+    #if the year is 
     for row in starting_set:
         # weight = links_df.loc[(links_df['linkid']==row[1]) & (links_df['reverse_link']==row[2]),'link_cost'].tolist()[0]
         weight = links_df.loc[(links_df[['linkid','reverse_link']]==(row[1],row[2])).all(axis=1),'link_cost'].item()
@@ -104,7 +105,7 @@ def add_virtual_links_new(pseudo_df,pseudo_G,links_df,start_nodes:list,end_nodes
     #add virtual edges with list comp
     edge_data = {'weight':0}
     # [pseudo_G.add_edge(row[0],(row[1],row[2]),**edge_data) for row in starting_set]
-    [pseudo_G.add_edge((int(row[0]),bool(row[1])),int(row[2]),**edge_data) for row in ending_set]
+    [pseudo_G.add_edge((int(row[0]),bool(row[1])),int(row[2]),**edge_data) for row in ending_set] # is this actually faster?
     return pseudo_G, starting_set, ending_set
 
 def remove_virtual_links_new(pseudo_G,starting_set,ending_set):

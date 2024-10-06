@@ -30,7 +30,7 @@ if __name__ == '__main__':
     )
 
     # determine the objective function to use and other settings
-    objective_function = stochastic_optimization.buffer_overlap
+    objective_function = stochastic_optimization.jaccard_buffer_mean
     batching = False
     stochastic_optimization_settings = {
         'method':'pso',

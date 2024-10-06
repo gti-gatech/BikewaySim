@@ -1,19 +1,17 @@
-from pathlib import Path
 import time
 import pandas as pd
 import pickle
 from stochopy.optimize import minimize
 import datetime
+from pathlib import Path
 
 from bikewaysim.paths import config
 from bikewaysim.impedance_calibration import stochastic_optimization
 
+# Get the script name (with the full path)
+calibration_name = Path(__file__).stem
 
 if __name__ == '__main__':
-
-    # determine the ouput name of the calibration outputs
-    calibration_name = 'calibration3_changed'
-
     # determine variables, impedance type, and search range
     betas_tup = (
         {'col':'2lpd','type':'link','range':[0,3]},
@@ -25,30 +23,21 @@ if __name__ == '__main__':
         {'col':'[4,6) grade','type':'link','range':[0,3]},
         {'col':'[6,inf) grade','type':'link','range':[0,3]},
         {'col':'bike lane','type':'link','range':[-1,0]},
-        {'col':'multi use path_original','type':'link','range':[-1,1]}
         # {'col':'cycletrack','type':'link','range':[-1,0]},
         # {'col':'multi use path','type':'link','range':[-1,0]},
+        {'col':'multi use path_original','type':'link','range':[-1,1]},
         # {'col':'unsig_major_road_crossing','type':'turn','range':[0,2]}
     )
-
-    # dealing with different years
-    # these columns should correspond to bicycle infrastructure columns
-    # the first is in the case that a road doesn't have on street infra
-    # so the bike lane inmpedance won't apply anymore
-    # the second is for multi use trails and seperately draw infra that should
-    # be avoided because it likely didn't exist
-    # the former is more of an issue than the latter in our case
     set_to_zero = ['bike lane']
     set_to_inf = ['multi use path_original']
 
     # determine the objective function to use and other settings
-    objective_function = stochastic_optimization.jaccard_buffer_mean
-    batching = True
+    objective_function = stochastic_optimization.jaccard_buffer_total
+    batching = False
     stochastic_optimization_settings = {
         'method':'pso',
-        'options': {'maxiter':1,'popsize':2}
+        'options': {'maxiter':100,'popsize':3}
     }
-
     links, turns, length_dict, geo_dict, turn_G = stochastic_optimization.import_calibration_network(config)
 
     with (config['calibration_fp']/'ready_for_calibration.pkl').open('rb') as fh:
@@ -67,13 +56,13 @@ if __name__ == '__main__':
         links,turns,turn_G, # network parts
         objective_function, # loss function to use
         {'length_dict':length_dict,'geo_dict':geo_dict},#,'trace_dict':traces}, # keyword arguments for loss function
-        True, #whether to print the results of each iteration
+        False, #whether to print the results of each iteration (useful when testing the calibration on its own)
         True, #whether to store calibration results
         batching # whether to batch results to help speed up computation time, if yes input the number to batch with
     )
+
     calibration_result = stochastic_optimization.full_impedance_calibration(betas_tup,args,stochastic_optimization_settings,full_set,calibration_name)
 
-    # #export but don't overwrite
     export_fp = config['calibration_fp'] / f'calibration_results/{calibration_name}.pkl'
     with stochastic_optimization.uniquify(export_fp).open('wb') as fh:
             pickle.dump(calibration_result,fh)

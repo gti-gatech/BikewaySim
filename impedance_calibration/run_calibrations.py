@@ -38,18 +38,18 @@ import subprocess
 from pathlib import Path
 import sys
 import signal
-import os
+import tqdm
 
 # Constants
-NUM_RUNS = 10  # Number of times to run each script
-MAX_WORKERS = 5  # Maximum number of scripts to run concurrently
+NUM_RUNS = 1  # Number of times to run each script
+MAX_WORKERS = 4  # Maximum number of scripts to run concurrently
 
 # List of scripts to run
-scripts = list((Path.cwd() / 'calibration_notebooks').glob('*.py'))
+scripts = list((Path.cwd() / 'calibration_scripts').glob('*.py'))
 
-exclude = ['calibrate3']
-scripts = [x for x in scripts if x.stem not in exclude]
-
+# Todo, have a more elagant way of doing this, i'm thinking just keep things seperated into different folders
+include = ['jaccard_buffer_mean','jaccard_buffer_total','jaccard_exact_mean','jaccard_exact_total']
+scripts = [x for x in scripts if x.stem in include]
 
 def run_script(args):
     script, run_num = args
@@ -87,7 +87,9 @@ if __name__ == '__main__':
 
     try:
         # Start the pool of workers
-        pool.map_async(run_script, tasks).get(9999999)  # A large timeout to allow for interrupt handling
+        timeout_sec = 24 * 60 * 60
+        pool.map_async(run_script, tasks).get(timeout_sec) 
+        # pool.map_async(run_script, tasks).get(9999999)  # A large timeout to allow for interrupt handling
 
     except KeyboardInterrupt:
         print("\nCtrl + C detected. Terminating the pool...")

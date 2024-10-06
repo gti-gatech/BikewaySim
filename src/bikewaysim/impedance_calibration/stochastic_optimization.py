@@ -15,6 +15,7 @@ import ast
 import shapely
 import sys
 import branca
+import random
 
 import similaritymeasures
 from bikewaysim.network import modeling_turns
@@ -35,23 +36,9 @@ Pre-Algo:
 Algo Steps:
 
 Todo:
-- Change the beta array structure to allow for flexible impedance functions
-that can be archived after optimization (not sure if this is possible)
-
-- Dict gives the attribute names
-
+- see if args can be a named tuple so it's easier to make changes to it
 
 '''
-
-import os
-import platform
-
-# Clear console output
-def clear_console():
-    if platform.system() == "Windows":
-        os.system('cls')
-    else:
-        os.system('clear')
 
 ########################################################################################
 
@@ -87,6 +74,7 @@ def extract_bounds(betas):
     '''
     return [x.get('range') for x in betas]
 
+#NOTE still not sure if this would be better to with the coordinates instead incase something gets removed
 def match_results_to_ods(match_results):
     #for the shortest path routing step, takes match_results and gets all unique od pairs
     ods = [(item['origin_node'],item['destination_node']) for key, item in match_results.items()]
@@ -95,18 +83,13 @@ def match_results_to_ods(match_results):
     return ods
 
 def match_results_to_ods_w_year(match_results):
-    # for the shortest path routing step, 
-    # instead of a list, it organizes
-    # 
-    # takes match_results and gets all unique od pairs wi
-    
-    
-    
-    ods = [(item['origin_node'],item['destination_node']) for key, item in match_results.items()]
-    ods = np.unique(np.array(ods),axis=0)
-    ods = [tuple(row) for row in ods]
+    #for the shortest path routing ste, except this returns the year
+    ods = [(item['origin_node'],item['destination_node'],item['trip_start_time']) for key, item in match_results.items()]
+    #ensure that we don't repeat duplicate shortest path searches
+    ods = list(set(ods))
+    #sort it by year
+    ods = sorted(ods,key=lambda x:x[-1])[::-1]
     return ods
-
 
 ########################################################################################
 
@@ -115,30 +98,32 @@ def match_results_to_ods_w_year(match_results):
 ########################################################################################
 
 import datetime
+
 def full_impedance_calibration(betas_tup,args,stochastic_optimization_settings,full_set,calibration_name):
     '''
     Use this to run the impedance calibration with less code
     '''
-
-    print(calibration_name,'starting')
+    
     start = time.time()
     if args[-3]:
         print([x['col'] for x in betas_tup]+['objective_function'])
+    
     x = minimize(impedance_calibration,
                 extract_bounds(betas_tup),
                 args=args,
                 **stochastic_optimization_settings)
     end = time.time()
     print(calibration_name,'complete, took',str(pd.Timedelta(seconds=end-start).round('s')),'hours')
-
-    if args[-3]:
-        print(f"{args[10].__name__}: {x.fun}")
+ 
+    if args[-2]:
+        print(args[12])
+        print(f"{args[12].__name__}: {x.fun}")
         print(x)
 
     calibration_result = {
         'betas_tup': tuple({**item,'beta':x.x[idx].round(4)} for idx,item in enumerate(betas_tup)), # contains the betas
         'settings': stochastic_optimization_settings, # contains the optimization settings
-        'objective_function': args[10].__name__, # objective function used
+        'objective_function': args[12].__name__, # objective function used
         'results': x, # stochastic optimization outputs
         'trips_calibrated': set(full_set.keys()), # saves which trips were calibrated
         'past_vals': args[0], # all of the past values/guesses
@@ -147,11 +132,11 @@ def full_impedance_calibration(betas_tup,args,stochastic_optimization_settings,f
     }
     return calibration_result
 
-
-import random
 def impedance_calibration(betas:np.array,
                           past_vals:list,
                           betas_tup:tuple,
+                          set_to_zero:list,
+                          set_to_inf:list,
                           ods:list,
                           match_results:dict,
                           link_impedance_function,
@@ -164,43 +149,77 @@ def impedance_calibration(betas:np.array,
                           track_calibration_results=True,
                           batching=False
                           ):
+
+    # create a copy of links so the original isn't modified when it's re-added
+    links = links.copy()
     
-    
+    # if infra is off street (i.e., the link should no longer be traversable)
+    links['link_cost_override'] = False
+
     #set link costs accordingly
     #TODO think about how to make this work with the trip dates, thinking that it would loop through and update for each year
-
-    negative_edge_weights = impedance_update(betas,betas_tup,
+    # takes about 2 seconds to update the impedance factors
+    updated_edge_costs = impedance_update(betas,betas_tup,
                           link_impedance_function,
                           base_impedance_col,
                           turn_impedance_function,
                           links,turns,turn_G)
-    
-    if (negative_edge_weights == False) & (print_results):
-        print('negative edge weights, skipping guess')
+
+    # make sure there are no negative edge weights
+    if isinstance(updated_edge_costs,bool):
+        if print_results:
+            print('negative edge weights, skipping guess')
         return np.nan
 
     # TODO print the iteration number and pop member
 
-
     if batching == True:
-        batch_ods = random.sample(ods,k=100)
-        batch_match_results = {tripid:item for tripid, item in match_results.items() if (item['origin_node'],item['destination_node']) in set(batch_ods)}
+        batch_ods = random.sample(ods,k=5)
+        batch_ods = sorted(batch_ods,key=lambda x: x[-1])[::-1]
+        batch_match_results = {tripid:item for tripid, item in match_results.items() if (item['origin_node'],item['destination_node'],item['trip_start_time']) in set(batch_ods)}
     else:
         batch_ods = ods
         batch_match_results = match_results
 
     #find leastdance path
     #NOTE right now I use start/end node to reduce the number of repeated shortest path searches
-    # for start_nodes, end_node in batch_ods():
+    trips_years = set()
+    results_dict = {}
+    for start_node, end_node, year in batch_ods:
+        if year not in trips_years:
+            trips_years.add(year) # add it to the years already looked at
+            if (links['year'] > year).any(): # only then should we run this
+                # print('Re-making network to year',year)
+                
+                # if infra is on street (i.e., the link is still traversable but the impedance doesn't apply)
+                links.loc[links['year']>year,set_to_zero] = 0 
+                links.loc[(links['year']>year) & (links.loc[:,set_to_inf]==1).any(axis=1),'link_cost_override'] = True
+                
+                # re-run network update
+                updated_edge_costs = impedance_update(betas,betas_tup,
+                        link_impedance_function,
+                        base_impedance_col,
+                        turn_impedance_function,
+                        links,turns,turn_G)
+            
+                # # find the links with the new facilities and then find where they appear in the turns df
+                # links_w_new_facilities = set(links.loc[(links['year']>year) & (links[set_to_inf]==1).any(axis=1),'linkid'].tolist())
+                # turns_w_new_facilities = turns.loc[turns['source_linkid'].isin(links_w_new_facilities) | turns['target_linkid'].isin(links_w_new_facilities),['source_linkid','source_reverse_link','target_linkid','target_reverse_link']]
+                # turns_w_new_facilities = {tuple(x):1e9 for x in turns_w_new_facilities.values} # set an absurdly high cost
+                # updated_edge_costs.update(turns_w_new_facilities) # update the costs of those particular edges
+                # #NOTE, this won't adress the case in which the first link is the bike path
+                # nx.set_edge_attributes(turn_G,values=updated_edge_costs,name='weight')
 
-    results_dict = {(start_node,end_node):impedance_path(turns,turn_G,links,start_node,end_node) for start_node, end_node in batch_ods}
+        results_dict[(start_node,end_node)] = impedance_path(turns,turn_G,links,start_node,end_node)
+
+    # results_dict = {(start_node,end_node):impedance_path(turns,turn_G,links,start_node,end_node) for start_node, end_node in batch_ods}
 
     #calculate the objective function
     #trim kwargs to only what's needed for the funtion 
     signature = inspect.signature(loss_function)
     arg_names = [param.name for param in signature.parameters.values()]
     loss_function_kwargs = {key:item for key,item in loss_function_kwargs.items() if key in arg_names}
-    val_to_minimize = loss_function(batch_match_results,results_dict,loss_function_kwargs)
+    val_to_minimize = loss_function(results_dict,batch_match_results,**loss_function_kwargs)
     
     if print_results:
         print(list(betas.round(2))+[np.round(val_to_minimize,2)])
@@ -210,6 +229,11 @@ def impedance_calibration(betas:np.array,
     #TODO actually implement this for disseration and because it would be cool in ppt to convey what is happening
     if track_calibration_results == True:
         past_vals.append(list(betas)+[val_to_minimize])
+        # TODO: create a progress bar using this
+        # if print_results:
+        #     worker = len(past_vals) % 3 + 1
+        #     iteration = len(past_vals)
+        #     print('Current Worker',worker,'Current Iteration',iteration)
 
     return val_to_minimize
 
@@ -230,14 +254,17 @@ def save_calibration_result(betas_links,betas_turns,coefs,val):
 ########################################################################################
 
 def impedance_path(turns,turn_G,links,o,d):
-    #NOTE: without these it'll throw a 'the result is ambiguous error'
+    #NOTE: without these it'll throw a 'the result is ambiguous error', in a future version we should probably
+    # start storing linkids as str instead of int to prevent the consant floating back and forth
     o = int(o)
     d = int(d)
-    
+    #TODO, time this step too would it be better to do all at once vs one at a time?
     turn_G, virtual_starts, virtual_ends = modeling_turns.add_virtual_links_new(turns,turn_G,links,[o],[d])
 
-    #try a star here (though it might not be admissable)
-    # length, edge_list = nx.single_source_dijkstra(turn_G,source=o,target=d,weight='weight')
+    # NOTE replaced with astar but since there is no heurstic it behaves like dijkstra
+    # however it terminates as soon as the target is reached
+    # it ends up being faster to do it this way, but it'd be nice to have it set up
+    # so that wasn't repeating path searches from the same origin
     edge_list = nx.astar_path(turn_G,source=o,target=d,weight='weight')
     actual_edge_list = list(zip(edge_list,edge_list[1:]))
     length = np.sum([turn_G.edges.get(edge)['weight'] for edge in actual_edge_list])
@@ -267,6 +294,10 @@ def impedance_update(betas:np.array,betas_tup:tuple,
     #update link costs
     link_impedance_function(betas, betas_tup, links, base_impedance_col)
     
+    # override the cost with 9e9 if future off-street facility
+    # this effectively prevents routing w/o messing around with the network structure
+    links.loc[links['link_cost_override']==True,'link_cost'] = 9e9
+
     #create cost dict (i think this is the fastest python way to do this?)
     tuple_index = tuple(zip(links['linkid'],links['reverse_link']))
     cost_dict = dict(zip(tuple_index,links['link_cost']))
@@ -289,7 +320,7 @@ def impedance_update(betas:np.array,betas_tup:tuple,
     updated_edge_costs = {((row[0],row[1]),(row[2],row[3])):row[4] for row in turns[cols].itertuples(index=False)}
     nx.set_edge_attributes(turn_G,values=updated_edge_costs,name='weight')
 
-    return True
+    return updated_edge_costs
 
 def back_to_base_impedance(link_impedance_col,links,turns,turn_G):
     '''
@@ -319,7 +350,7 @@ def back_to_base_impedance(link_impedance_col,links,turns,turn_G):
 ########################################################################################
 import inspect
 
-def jaccard_exact_total(results_dict,match_results,loss_function_kwargs):
+def jaccard_exact_total(results_dict,match_results,length_dict):
     '''
     Takes the sum of all the intersection lengths and
     divides it by all the union length.
@@ -335,7 +366,7 @@ def jaccard_exact_total(results_dict,match_results,loss_function_kwargs):
         chosen = [tuple(row) for row in match_results[tripid]['matched_edges'].values]
         od = (item['origin_node'],item['destination_node'])
         modeled = results_dict[od]['edge_list']
-        loss_value = jaccard_exact(chosen,modeled,**loss_function_kwargs)
+        loss_value = jaccard_exact(chosen,modeled,length_dict)
         loss_values.append(loss_value)
     loss_values = np.array(loss_values)
 
@@ -345,7 +376,7 @@ def jaccard_exact_total(results_dict,match_results,loss_function_kwargs):
 
     return val_to_minimize
 
-def jaccard_exact_mean(results_dict,match_results,loss_function_kwargs):
+def jaccard_exact_mean(results_dict,match_results,length_dict):
     '''
     Takes the mean of the jaccard values.
     
@@ -360,17 +391,17 @@ def jaccard_exact_mean(results_dict,match_results,loss_function_kwargs):
         chosen = [tuple(row) for row in match_results[tripid]['matched_edges'].values]
         od = (item['origin_node'],item['destination_node'])
         modeled = results_dict[od]['edge_list']
-        loss_value = jaccard_exact(chosen,modeled,**loss_function_kwargs)
+        loss_value = jaccard_exact(chosen,modeled,length_dict)
         loss_values.append(loss_value)
     loss_values = np.array(loss_values)
 
     #but this part would be different
     # the higher the value, the better, so multiply by -1 because we're minimizing
-    val_to_minimize = -1 * np.sum(loss_values[:,0] / loss_values[:,1])
+    val_to_minimize = -1 * np.sum(loss_values[:,0] / loss_values[:,1]) / loss_values.shape[0]
 
     return val_to_minimize
 
-def jaccard_buffer_total(results_dict,match_results,loss_function_kwargs):
+def jaccard_buffer_total(results_dict,match_results,geo_dict):
     '''
     Takes the sum of all the intersection lengths and
     divides it by all the union length.
@@ -378,7 +409,7 @@ def jaccard_buffer_total(results_dict,match_results,loss_function_kwargs):
     Intersections and union lengths from the jaccard buffer
     loss function.
     '''
-
+    
     #NOTE this would be the same across functions
     loss_values = []
     for tripid, item in match_results.items():
@@ -386,7 +417,7 @@ def jaccard_buffer_total(results_dict,match_results,loss_function_kwargs):
         chosen = [tuple(row) for row in match_results[tripid]['matched_edges'].values]
         od = (item['origin_node'],item['destination_node'])
         modeled = results_dict[od]['edge_list']
-        loss_value = jaccard_buffer(chosen,modeled,**loss_function_kwargs)
+        loss_value = jaccard_buffer(chosen,modeled,geo_dict,buffer_ft=50)
         loss_values.append(loss_value)
     loss_values = np.array(loss_values)
 
@@ -396,28 +427,29 @@ def jaccard_buffer_total(results_dict,match_results,loss_function_kwargs):
 
     return val_to_minimize
 
-def jaccard_buffer_mean(results_dict,match_results,loss_function_kwargs):
+def jaccard_buffer_mean(results_dict,match_results,geo_dict):
     '''
     Takes the mean of the jaccard values.
     
     Intersections and union lengths from the jaccard buffer
     loss function .
     '''
-
+    
     #NOTE this would be the same across functions
     loss_values = []
+    
     for tripid, item in match_results.items():
         #retrievs linkids in (linkid:int,reverse_link:boolean) format
         chosen = [tuple(row) for row in match_results[tripid]['matched_edges'].values]
         od = (item['origin_node'],item['destination_node'])
         modeled = results_dict[od]['edge_list']
-        loss_value = jaccard_buffer(chosen,modeled,**loss_function_kwargs)
+        loss_value = jaccard_buffer(chosen,modeled,geo_dict,buffer_ft=50)
         loss_values.append(loss_value)
     loss_values = np.array(loss_values)
 
     #but this part would be different
     # the higher the value, the better, so multiply by -1 because we're minimizing
-    val_to_minimize = -1 * np.sum(loss_values[:,0] / loss_values[:,1])
+    val_to_minimize = -1 * np.sum(loss_values[:,0] / loss_values[:,1]) / loss_values.shape[0]
 
     return val_to_minimize
 
@@ -536,8 +568,8 @@ def jaccard_buffer(chosen,other,geo_dict,buffer_ft=50):
     chosen_buffer = chosen.buffer(buffer_ft)
     other_buffer = other.buffer(buffer_ft)
     # find the intersection and union area
-    intersection_area = chosen_buffer.intersection(other_buffer)
-    union_area = chosen_buffer.union(other_buffer)
+    intersection_area = chosen_buffer.intersection(other_buffer).area
+    union_area = chosen_buffer.union(other_buffer).area
     return (intersection_area,union_area)
 
 def detour_factor(chosen,shortest,length_dict):

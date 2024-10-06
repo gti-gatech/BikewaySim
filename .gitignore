@@ -17,3 +17,4 @@ config.json
 **/__pycache__/
 **/cache/
 **/bikewaysim.egg-info/
+clear_outputs.py
