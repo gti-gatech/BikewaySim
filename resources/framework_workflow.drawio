@@ -1,0 +1,117 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/24.7.5 Chrome/126.0.6478.183 Electron/31.3.0 Safari/537.36" version="24.7.5">
+  <diagram id="C5RBs43oDa-KdzZeNtuy" name="Page-1">
+    <mxGraphModel dx="1194" dy="824" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" background="none" math="0" shadow="0">
+      <root>
+        <mxCell id="WIyWlLk6GJQsqaUBKTNV-0" />
+        <mxCell id="WIyWlLk6GJQsqaUBKTNV-1" parent="WIyWlLk6GJQsqaUBKTNV-0" />
+        <mxCell id="R0483DvR8_1Hlp5DziVE-8" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="WIyWlLk6GJQsqaUBKTNV-1" source="WIyWlLk6GJQsqaUBKTNV-3" target="q5z-DLaLLsinZePrp_ie-0" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="R0483DvR8_1Hlp5DziVE-9" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="WIyWlLk6GJQsqaUBKTNV-1" source="WIyWlLk6GJQsqaUBKTNV-3" target="q5z-DLaLLsinZePrp_ie-1" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="WIyWlLk6GJQsqaUBKTNV-3" value="OD Pairs" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;glass=0;strokeWidth=1;shadow=0;" parent="WIyWlLk6GJQsqaUBKTNV-1" vertex="1">
+          <mxGeometry x="120" y="140" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="R0483DvR8_1Hlp5DziVE-11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;dashed=1;" parent="WIyWlLk6GJQsqaUBKTNV-1" source="q5z-DLaLLsinZePrp_ie-0" target="R0483DvR8_1Hlp5DziVE-0" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="340" y="100" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="R0483DvR8_1Hlp5DziVE-12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;dashed=1;" parent="WIyWlLk6GJQsqaUBKTNV-1" source="q5z-DLaLLsinZePrp_ie-0" target="q5z-DLaLLsinZePrp_ie-8" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="q5z-DLaLLsinZePrp_ie-0" value="Current Network" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;glass=0;strokeWidth=1;shadow=0;" parent="WIyWlLk6GJQsqaUBKTNV-1" vertex="1">
+          <mxGeometry x="120" y="80" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="R0483DvR8_1Hlp5DziVE-10" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="WIyWlLk6GJQsqaUBKTNV-1" source="q5z-DLaLLsinZePrp_ie-1" target="R0483DvR8_1Hlp5DziVE-7" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="q5z-DLaLLsinZePrp_ie-1" value="Network with Improvements" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;glass=0;strokeWidth=1;shadow=0;" parent="WIyWlLk6GJQsqaUBKTNV-1" vertex="1">
+          <mxGeometry x="120" y="200" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="R0483DvR8_1Hlp5DziVE-16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="WIyWlLk6GJQsqaUBKTNV-1" source="q5z-DLaLLsinZePrp_ie-8" target="q5z-DLaLLsinZePrp_ie-9" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="410" y="195" />
+              <mxPoint x="410" y="40" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="R0483DvR8_1Hlp5DziVE-19" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="WIyWlLk6GJQsqaUBKTNV-1" source="q5z-DLaLLsinZePrp_ie-8" target="RQPyOEMUkP8bNnNCqlz3-0" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="410" y="195" />
+              <mxPoint x="410" y="305" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="R0483DvR8_1Hlp5DziVE-21" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="WIyWlLk6GJQsqaUBKTNV-1" source="q5z-DLaLLsinZePrp_ie-8" target="q5z-DLaLLsinZePrp_ie-14" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="410" y="195" />
+              <mxPoint x="410" y="235" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="R0483DvR8_1Hlp5DziVE-23" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="WIyWlLk6GJQsqaUBKTNV-1" source="q5z-DLaLLsinZePrp_ie-8" target="q5z-DLaLLsinZePrp_ie-13" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="410" y="195" />
+              <mxPoint x="410" y="165" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="q5z-DLaLLsinZePrp_ie-8" value="Dijkstra&#39;s Algorithm Using Impedance" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;glass=0;strokeWidth=1;shadow=0;" parent="WIyWlLk6GJQsqaUBKTNV-1" vertex="1">
+          <mxGeometry x="280" y="175" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="q5z-DLaLLsinZePrp_ie-9" value="Trip Impedance Reduction" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;glass=0;strokeWidth=1;shadow=0;" parent="WIyWlLk6GJQsqaUBKTNV-1" vertex="1">
+          <mxGeometry x="451" y="20" width="130" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="q5z-DLaLLsinZePrp_ie-13" value="Change in Link Betweenness&lt;div&gt;Centrality&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;glass=0;strokeWidth=1;shadow=0;" parent="WIyWlLk6GJQsqaUBKTNV-1" vertex="1">
+          <mxGeometry x="451" y="140" width="130" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="q5z-DLaLLsinZePrp_ie-14" value="Improvement Impedance Reduction" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;glass=0;strokeWidth=1;shadow=0;" parent="WIyWlLk6GJQsqaUBKTNV-1" vertex="1">
+          <mxGeometry x="451" y="210" width="130" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="q5z-DLaLLsinZePrp_ie-15" value="Percent Detour" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;glass=0;strokeWidth=1;shadow=0;" parent="WIyWlLk6GJQsqaUBKTNV-1" vertex="1">
+          <mxGeometry x="451" y="75" width="130" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="RQPyOEMUkP8bNnNCqlz3-0" value="Bikesheds" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;glass=0;strokeWidth=1;shadow=0;" parent="WIyWlLk6GJQsqaUBKTNV-1" vertex="1">
+          <mxGeometry x="451" y="280" width="130" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="R0483DvR8_1Hlp5DziVE-20" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="WIyWlLk6GJQsqaUBKTNV-1" source="R0483DvR8_1Hlp5DziVE-0" target="q5z-DLaLLsinZePrp_ie-15" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="410" y="135" />
+              <mxPoint x="410" y="100" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="R0483DvR8_1Hlp5DziVE-0" value="Dijkstra&#39;s Algorithm Using Travel Time" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;glass=0;strokeWidth=1;shadow=0;" parent="WIyWlLk6GJQsqaUBKTNV-1" vertex="1">
+          <mxGeometry x="280" y="115" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="R0483DvR8_1Hlp5DziVE-13" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="WIyWlLk6GJQsqaUBKTNV-1" source="R0483DvR8_1Hlp5DziVE-7" target="R0483DvR8_1Hlp5DziVE-0" edge="1">
+          <mxGeometry x="-0.5207" relative="1" as="geometry">
+            <mxPoint x="250" y="140" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="250" y="320" />
+              <mxPoint x="250" y="135" />
+            </Array>
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="R0483DvR8_1Hlp5DziVE-14" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" parent="WIyWlLk6GJQsqaUBKTNV-1" source="R0483DvR8_1Hlp5DziVE-7" target="q5z-DLaLLsinZePrp_ie-8" edge="1">
+          <mxGeometry x="-0.4721" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="R0483DvR8_1Hlp5DziVE-7" value="Improvements&lt;div&gt;add connectivity?&lt;/div&gt;" style="rhombus;whiteSpace=wrap;html=1;" parent="WIyWlLk6GJQsqaUBKTNV-1" vertex="1">
+          <mxGeometry x="112" y="270" width="136" height="100" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

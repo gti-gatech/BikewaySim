@@ -1,19 +1,40 @@
-# BikewaySim (Development Version)
-BikewaySim is a data science project used for assessing the impedance reduction from new cycling infrastructure. It is part of Reid Passmore's Ph.D. dissertation. BikewaySim is currently intended to work in the continental United States.
+# BikewaySim
+BikewaySim is a collection of open-source scripts for helping cities, DOTs, MPOs, and/or advocacy groups assess the connectivity impacts of new cycling facilities (bike lanes and cycletracks) through change in cycling impedance.
+ 
+Cycling impedance measures the relative difficulty of cycling from point A to point B considering travel time, elevation/hills, exposure to automobile traffic, the presence of bicycle facilities, and other preferences that cyclists have for road features.
 
-This is the development version of BikewaySim, for the production version access: https://github.com/gti-gatech/BikewaySim
+BikewaySim's cycling impedance model is trained on existing recorded cycling trips. The cycling impedance model can then be used to simulate cycling impedance (including the optimal route such as in Figure 1) between any two places (home to grocery, school to park, etc.). On its own, this model can be used by cities to help suggest better cycling routes to encourage cycling,
 
+<figure>
+    <img src="resources\impedance_example.jpeg" width=350>
+    <figcaption><b>Figure 1:</b> Example of BikewaySim impedance routing (purple) and travel time only routing (black)</figcaption>
+</figure>
+
+When paired with BikewaySim's bicycle facility assessment framework (Figure 2), the cycling impedance model can be used to evaluate proposed cycling facilities using a variety of metrics and visuals using the change in simulated impedance caused by the bicycle facilities. Cities, DOTs, MPOs, and/or advocacy groups can use the outputs of the framework to prioritize new cycling facilities accordingly.
+
+<figure>
+    <img src="resources\framework_workflow.jpeg" width=350>
+    <figcaption><b>Figure 2:</b> BikewaySim bicycle facility assessment framework</figcaption>
+</figure>
+
+| BikewaySim Framework Visual | Example
+|-|-|
+| Trip Impedance Reduction | <img src="resources/origin weighted impedance change.jpeg" width=200> |
+| Percent Detour | <img src="resources/percent detour.jpeg" width=200> |
+| Change in Link Betweenness Centrality | <img src="resources/lbc future - current.jpeg" width=200> |
+| Improvement Impedance Reduction | <img src="resources/impedance contribution.jpeg" width=200> |
+| Bikesheds | <img src="resources/bikeshed add remove.jpeg" width=200> |
 
 ## Main functionalities:
-1. Downloading and processing OpenStreetMap network data for bicycle routing using Geofabrik and OSMnx
-1. Calibrating link and turn impedance functions for cycling using bicycling GPS traces or count data using stochopy
-1. Finding the shortest path for selected or all-to-all O-D pairs given custom link and turn impedance functions
-1. Processing shortest path results to generate several metrics for assessing the impacts of planned cycling infrastructure
+1. Downloading and processing OpenStreetMap network data for bicycle routing using [Geofabrik](https://www.geofabrik.de) and [OSMnx](https://github.com/gboeing/osmnx)
+1. Calibrating link and turn impedance functions for cycling using bicycling GPS traces or count data using [stochopy](https://github.com/keurfonluu/stochopy)
+1. Finding the least impedance route for selected or all-to-all O-D pairs given calibrated or custom link and turn impedance functions using [NetworkX](https://github.com/networkx/networkx)
+1. Using results to generate several metrics for assessing the impacts of planned cycling facilities
 
 ## Install instructions:
-- Clone the repository into your desired directory
+- Clone the repository (and the transit-routing submodule) into your desired directory
 ```
-git clone https://github.com/reidx19/BikewayDev
+git clone --recurse-submodules -j8 https://github.com/reidx19/BikewayDev 
 ```
 - Install conda to set up a Python virtual environment by following the [instructions](https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html)
 - Using conda's CLI, install the invluded environment named `environment.yml` and name it `bikewaysim`
@@ -30,46 +51,42 @@ pip install -e .
 ```
 - Great! Everything should be installed!
 - Most of the code is excuted through Jupyter Notebooks which can be opened/run/edited through VS Code or Jupyter Notebook, just make sure your conda environment is activated.
-## Running Instructions
 
-1. 
+## How to Run
+1. Modify the [config.json](config.json) file to define the project directory and various settings (e.g., desired projected coordinate system, supplemental data directories, etc.).
+1. Create a new study area in GIS or [bounding box](https://boundingbox.klokantech.com) or provide an existing one. Save in `.geojson`, `.gpkg`, or `.shp` format.
+1. Download OpenStreetMap network data using [Step_0_Process_OSM.ipynb](./network/Step_0_Process_OSM.ipynb).
 
-## Quick Start for Bike Routing
-1. Open [Downloading_OSM.ipynb](./osm_download/Downloading_OSM.ipynb) and follow the instructions to download OpenStreetMap network data
+## Quick Start Bike Routing
+1. Continue running through each .ipynb file in the network module in order
+1. Use the bicycle facilities module to add in bicycle facilities from other data sources and OpenStreetMap
+1. Run the notebooks in the [bikewaysim_framework](./bikewaysim_framework/) module to route cycling trips using default or custom impedance factors
+
+## Quick Start Bike-Transit Routing
+1. Clone the [transit-routing](https://github.com/reidx19/transit-routing) submodule
+1. Open [Simulating Bike-Transit Trips.ipynb](./bike_transit/Simulating%20Bike-Transit%20Trips.ipynb) and walk through the steps until a study area is generated
+1. Open [Downloading_OSM.ipynb](./osm_download/Downloading_OSM.ipynb) and use the generated study area to download OpenStreetMap network data
+1. Continue with [Simulating Bike-Transit Trips.ipynb](./bike_transit/Simulating%20Bike-Transit%20Trips.ipynb)
+
+## BikewaySim Facility 
+
+1. Open  and follow the instructions to download OpenStreetMap network data
 1. Open [Step_1 Network_Filtering_and_Processing.ipynb](./network/Step_1_Network_Filtering.ipynb) to process OSM into network graph format and identify link types
 1. Open [Step_2_Network_Reconciliation.ipynb](./network/Step_2_Network_Reconciliation.ipynb) to finalize the network for routing
 1. Open [Run_BikewaySim.ipynb](./bikewaysim/Run_BikewaySim.ipynb) to perform aggregated shortest path routing and output Geopackage files to visualize in GIS software
 
-## Quick Start Bike-Transit Routing
-1. Open [Simulating%20Bike-Transit%20Trips.ipynb](./bike_transit/Simulating%20Bike-Transit%20Trips.ipynb) and walk through the steps until a study area is generated
-1. Open [Downloading_OSM.ipynb](./osm_download/Downloading_OSM.ipynb) and use the generated study area to download OpenStreetMap network data
-1. Continue with [Simulating%20Bike-Transit%20Trips.ipynb](./bike_transit/Simulating%20Bike-Transit%20Trips.ipynb)
-
 ### List of Modules
 
-| Module                 | Description                | Status |
-|------------------------|----------------------------|---|
-| add_elevation_data     | Add USGS elevatoin data to a network | working  |
-| bike-transit           | Run aggregated bike-transit shortest path calculations | working |                    
-| run_bikewaysim         | Run aggregated cycling shortest path calculations | working |
-| gps_processing         | Process and map-match GPS trace data | in development  |   
-| impedance_calibration  | Use map-matched GPS traces to calirbate link impedance functions | in development |
-| network                | Process network data for shortest path routing          | working
-| osm_download           | Download OpenStreetMap network data             | working
+| Module | Description | Status |
+|-|-|-|
+| bicycle_facilities | Add supplemental bicycle facility data | working |
+| bike-transit| Run aggregated bike-transit shortest path calculations | working |                    
+| bikewaysim_framework | Run aggregated cycling shortest path calculations and create  | working |
+| map_matching | Map-match GPS trace data | working  |   
+| impedance_calibration  | Use map-matched GPS traces to calibrate link impedance functions | in development |
+| network | Download OSM data and process for shortest path routing | working
 
-
-This Jupyter Notebook uses code from "osm_download_functions.py" to retrieve and export to file OSM geometry and attribute data for a GeoDataFrame's boundingbox. It also contains templates for examining the attribute completion of the OSM data and for visualizing where attribute data is complete. Once run, the data can be used in the network module.
-
-## gps_processing
-This module contains code for 
-
-## 
-
-## Assessing Bike-Transit Accessibility
-
-
-
-
+<!-- ## Assessing Bike-Transit Accessibility
 This version of the code was used for the NCST Report on "Simulating Bike-Transit Trips Using BikewaySim and TransitSim." This repository is composed of several scripts and jupyter notebooks necessary for running the analyses performed in that report. This readme will outline the steps needed to repeat the analyses done in that report and go over the contents of each file. For more detailed documentation, open up the file of interest to read through line comments.
 
 __Note 1: The version of the code published here might not be the most current version. 
@@ -102,9 +119,23 @@ This Jupyter notebook is a workspace for using the reconciliation functions in t
 The Jupyter notebook generates link impedances and prepares the reconciled network for routing for Step 4. This step is dependent on the available networks, network attribute data, and desired link impedances.
 
 ## Step 4 Run BikewaySim.ipynb
-This final notebook runs the Dijkstra shortest path routing algorithm for the given OD pairs. Results are exported to file and processed to make the visualizations and metrics.
+This final notebook runs the Dijkstra shortest path routing algorithm for the given OD pairs. Results are exported to file and processed to make the visualizations and metrics. -->
+
+### Publications
+1. Passmore, R., K., Watkins, and R. Guensler (2024). Using Shortest Path Routing to Assess Cycling Networks. *Journal of Transportation Geography*. DOI: [10.1016/j.jtrangeo.2024.103864](https://doi.org/10.1016/j.jtrangeo.2024.103864)
+1. Passmore, R., K. Watkins, and R. Guensler (2024). Assessing Bike-Transit Accessibility. *Transportation Research Record*. DOI: [10.1177/03611981241234902](https://doi.org/10.1177/03611981241234902)
+1. Passmore, R., K. Watkins, and R. Guensler (2024). Siumulating Bike-Transit Trips Through BikewaySim and TransitSim. *National Center for Sustainable Transportation*. DOI: [10.7922/G22R3Q0B](http://dx.doi.org/10.7922/G22R3Q0B)
+1. Passmore, R., K. Watkins, and R. Guensler (2021). BikewaySim Technology Transfer: City of Atlanta Georgia. *National Center for Sustainable Transportation*. DOI: [10.7922/G2CF9NDV](https://dx.doi.org/10.7922/G2CF9NDV)
+
+### Acknowledgements
+BikewaySim was developed as part of Reid Passmore's Ph.D. dissertation. BikewaySim was developed with funding from the National Center for Sustainable Transportation and Georgia Department of Transportation. 
 
 ### Authors
-- **Reid Passmore**: Ph.D. Canddiate at the Georgia Institute of Technology
-- **Ziyi Dai** 
-- **Fizzy Fan**
+**Reid Passmore**, Ph.D. Candidate<sup>1</sup><br />
+**Fizzy Fan**, Ph.D. Candidate<sup>1</sup><br />
+**Dr. Ziyi Dai**,<br />
+**Dr. Randall Guensler**, Professor<sup>1</sup><br />
+**Dr. Kari Watkins**, Associate Professor<sup>2</sup><br />
+
+<sup>1</sup>School of Civil and Environmental Engineering, Georgia Institute of Technology<br />
+<sup>2</sup>School of Civil and Environmental Engineering, University of California, Davis<br />
