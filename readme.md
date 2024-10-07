@@ -3,7 +3,7 @@ BikewaySim is a collection of open-source scripts for helping cities, DOTs, MPOs
  
 Cycling impedance measures the relative difficulty of cycling from point A to point B considering travel time, elevation/hills, exposure to automobile traffic, the presence of bicycle facilities, and other preferences that cyclists have for road features.
 
-BikewaySim's cycling impedance model is trained on existing recorded cycling trips. The cycling impedance model can then be used to simulate cycling impedance (including the optimal route such as in Figure 1) between any two places (home to grocery, school to park, etc.). On its own, this model can be used by cities to help suggest better cycling routes to encourage cycling,
+BikewaySim's cycling impedance model is trained on existing recorded cycling trips. The cycling impedance model can then be used to simulate cycling impedance (including the optimal route such as in Figure 1) between any two places (home to grocery, school to park, etc.). On its own, this model can be used by cities to help suggest better cycling routes to encourage cycling.
 
 <figure>
     <img src="resources\impedance_example.jpeg" width=350>
@@ -27,6 +27,8 @@ When paired with BikewaySim's bicycle facility assessment framework (Figure 2), 
 
 ## Main functionalities:
 1. Downloading and processing OpenStreetMap network data for bicycle routing using [Geofabrik](https://www.geofabrik.de) and [OSMnx](https://github.com/gboeing/osmnx)
+1. Conflating and reconciling attributes from other network sources to OSM
+1. Map matching cycling GPS traces to OSM using [Leuven Map Matching](https://github.com/wannesm/LeuvenMapMatching)
 1. Calibrating link and turn impedance functions for cycling using bicycling GPS traces or count data using [stochopy](https://github.com/keurfonluu/stochopy)
 1. Finding the least impedance route for selected or all-to-all O-D pairs given calibrated or custom link and turn impedance functions using [NetworkX](https://github.com/networkx/networkx)
 1. Using results to generate several metrics for assessing the impacts of planned cycling facilities
