@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import xyzservices.providers as xyz
 from pyprojroot import here
 root = here()
 
@@ -44,3 +45,14 @@ config["cycleatl_fp"] = cycleatl_fp
 config["matching_fp"] = matching_fp
 config["network_fp"] = network_fp
 config["osmdwnld_fp"] = osmdwnld_fp
+
+#tiles config for folium
+stadia_toner = {
+    "tiles": 'https://tiles.stadiamaps.com/tiles/stamen_toner_lite/{z}/{x}/{y}{r}.png' + f"?api_key={config['stadia_api']}",
+    "attr": xyz.Stadia.StamenToner.attribution
+}
+maptiler_streets = {
+    "tiles": xyz.MapTiler.Streets.build_url(key=config['maptilerapikey']),
+    "name": str.replace(xyz.MapTiler.Streets.name,'.',' '),
+    "attr": xyz.MapTiler.Streets.attribution
+}

@@ -1,38 +1,3 @@
-# import concurrent.futures
-# import subprocess
-# from pathlib import Path
-# import sys
-
-# # Constants
-# NUM_RUNS = 10  # Number of times to run each script
-# MAX_WORKERS = 8  # Maximum number of scripts to run concurrently
-
-# # List of scripts to run
-# scripts = list((Path.cwd() / 'calibration_notebooks').glob('*.py'))
-
-# exclude = ['calibrate3']
-# scripts = [x for x in scripts if x.stem not in exclude]
-
-# # def run_script(script, run_num):
-# #     print(f"Running {script.stem} (Run {run_num + 1}/{NUM_RUNS})")
-# #     subprocess.run([f"{sys.executable}", script], check=True)
-# #     print(f"Completed {script.stem} (Run {run_num + 1}/{NUM_RUNS})")
-
-# def run_script(script):
-#     subprocess.run([f"{sys.executable}", script], check=True)
-
-# if __name__ == '__main__':
-#     print([x.stem for x in scripts])
-    
-#     # Create a list of (script, run_num) pairs for NUM_RUNS
-#     tasks = [script for script in scripts for run_num in range(NUM_RUNS)]
-    
-#     # Run scripts in parallel using ProcessPoolExecutor
-#     # with concurrent.futures.ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
-#     #     executor.map(lambda args: run_script(*args), tasks)
-#     with concurrent.futures.ProcessPoolExecutor(max_workers=8) as executor:
-#         executor.map(run_script, scripts)
-
 import multiprocessing
 import subprocess
 from pathlib import Path
@@ -40,16 +5,20 @@ import sys
 import signal
 import tqdm
 
+#TODO would be nice if nfev and nit appeared every 30ish minutes or so
+#TODO or just a status bar to now many more processes were running
+
 # Constants
-NUM_RUNS = 1  # Number of times to run each script
-MAX_WORKERS = 4  # Maximum number of scripts to run concurrently
+NUM_RUNS = 2  # Number of times to run each script
+MAX_WORKERS = 8  # Maximum number of scripts to run concurrently
 
 # List of scripts to run
 scripts = list((Path.cwd() / 'calibration_scripts').glob('*.py'))
 
 # Todo, have a more elagant way of doing this, i'm thinking just keep things seperated into different folders
-include = ['jaccard_buffer_mean','jaccard_buffer_total','jaccard_exact_mean','jaccard_exact_total']
-scripts = [x for x in scripts if x.stem in include]
+# include = ['jaccard_buffer_mean','jaccard_buffer_total','jaccard_exact_mean','jaccard_exact_total']
+exclude = ['calibrate0','calibrate1','calibrate2','calibrate3']
+scripts = [x for x in scripts if x.stem not in exclude]
 
 def run_script(args):
     script, run_num = args
@@ -101,3 +70,5 @@ if __name__ == '__main__':
         pool.join()   # Wait for all workers to finish
 
     print("Finished script execution.")
+
+    # TODO run the post processing code after that

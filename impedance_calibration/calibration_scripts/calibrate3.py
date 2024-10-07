@@ -12,7 +12,7 @@ from bikewaysim.impedance_calibration import stochastic_optimization
 if __name__ == '__main__':
 
     # determine the ouput name of the calibration outputs
-    calibration_name = 'calibration3_changed'
+    calibration_name = 'testing'
 
     # determine variables, impedance type, and search range
     betas_tup = (
@@ -49,8 +49,6 @@ if __name__ == '__main__':
         'options': {'maxiter':1,'popsize':2}
     }
 
-    links, turns, length_dict, geo_dict, turn_G = stochastic_optimization.import_calibration_network(config)
-
     with (config['calibration_fp']/'ready_for_calibration.pkl').open('rb') as fh:
         full_set = pickle.load(fh)
 
@@ -71,9 +69,9 @@ if __name__ == '__main__':
         True, #whether to store calibration results
         batching # whether to batch results to help speed up computation time, if yes input the number to batch with
     )
-    calibration_result = stochastic_optimization.full_impedance_calibration(betas_tup,args,stochastic_optimization_settings,full_set,calibration_name)
+    stochastic_optimization.full_impedance_calibration(betas_tup,args,stochastic_optimization_settings,full_set,calibration_name)
 
-    # #export but don't overwrite
-    export_fp = config['calibration_fp'] / f'calibration_results/{calibration_name}.pkl'
-    with stochastic_optimization.uniquify(export_fp).open('wb') as fh:
-            pickle.dump(calibration_result,fh)
+    # # #export but don't overwrite
+    # export_fp = config['calibration_fp'] / f'calibration_results/{calibration_name}.pkl'
+    # with stochastic_optimization.uniquify(export_fp).open('wb') as fh:
+    #         pickle.dump(calibration_result,fh)
