@@ -104,7 +104,7 @@ def match_results_to_ods_w_year(match_results):
 ########################################################################################
 
 import datetime
-
+#TODO rename variables like full_set to match_results or matched_traces, just develop some type of convention
 def full_impedance_calibration(betas_tup,
                                set_to_zero,
                                set_to_inf,
@@ -113,12 +113,13 @@ def full_impedance_calibration(betas_tup,
                                stochastic_optimization_settings,
                                full_set,
                                print_results,
-                               calibration_name
+                               calibration_name,
+                               base_impedance_col='travel_time_min',
                                ):
     '''
     Use this to run the impedance calibration with less code
     '''
-    
+
     # import network
     links, turns, length_dict, geo_dict, turn_G = import_calibration_network(config)
 
@@ -132,7 +133,7 @@ def full_impedance_calibration(betas_tup,
         match_results_to_ods_w_year(full_set), # list of OD network node pairs needed for shortest path routing
         full_set, # dict containing the origin/dest node and map matched edges
         link_impedance_function, # link impedance function to use
-        "travel_time_min", # column with the base the base impedance in travel time or distance
+        base_impedance_col, # column with the base the base impedance in travel time or distance
         turn_impedance_function, # turn impedance function to use
         links,turns,turn_G, # network parts
         objective_function, # loss function to use
@@ -143,7 +144,7 @@ def full_impedance_calibration(betas_tup,
     )
     # turn the argument tuple into a named tuple
     # TODO it should convert an ordered dict instead but this works
-    args = Calibration(*args)
+    # args = Calibration(*args)
 
     # run the calibration
     start = time.time()
@@ -160,7 +161,7 @@ def full_impedance_calibration(betas_tup,
         print(f"{objective_function.__name__}: {x.fun}")
         print(x)
 
-    # assemble dictionary of all the results
+    # assemble dictionary of the calibration results
     calibration_result = {
         'betas_tup': tuple({**item,'beta':x.x[idx].round(4)} for idx,item in enumerate(betas_tup)), # contains the betas
         'set_to_zero': set_to_zero,
@@ -175,21 +176,21 @@ def full_impedance_calibration(betas_tup,
     }
 
     # # if calibration result is successful run the post calibration
-    if calibration_result['results'].success:
-
-        # post process the model results now so they're ready for analysis and visualization
-        modeled_ods = post_calibration_routing(links,turns,turn_G,match_results_to_ods_w_year(full_set),args.base_impedance_col,set_to_zero,set_to_inf,calibration_result)
-        
-        # export
-        calibration_result_fp = config['calibration_fp'] / f"calibration_results/{calibration_name}.pkl"
-        with uniquify(calibration_result_fp).open('wb') as fh:
-            pickle.dump(calibration_result,fh)
-        post_calibration_routing_fp = config['calibration_fp'] / f"post_calibration_routing/{calibration_name}.pkl"
-        with uniquify(post_calibration_routing_fp).open('wb') as fh:
-            pickle.dump(modeled_ods,fh)
+    # if calibration_result['results'].success:
+    print(calibration_name,'successful')
+    # export calibration result
+    calibration_result_fp = config['calibration_fp'] / f"calibration_results/{calibration_name}.pkl"
+    with uniquify(calibration_result_fp).open('wb') as fh:
+        pickle.dump(calibration_result,fh)
     
-    else:
-        print(calibration_name,'failed:',x.message)
+    # post process the model results now so they're ready for analysis and visualization
+    modeled_ods = post_calibration_routing(links,turns,turn_G,match_results_to_ods_w_year(full_set),base_impedance_col,set_to_zero,set_to_inf,calibration_result)
+    post_calibration_routing_fp = config['calibration_fp'] / f"post_calibration_routing/{calibration_name}.pkl"
+    with uniquify(post_calibration_routing_fp).open('wb') as fh:
+        pickle.dump(modeled_ods,fh)
+
+    # else:
+    #     print(calibration_name,'failed:',x.message)
 
 def impedance_calibration(betas:np.array,
                           past_vals:list,
@@ -231,9 +232,9 @@ def impedance_calibration(betas:np.array,
         return np.nan
 
     # TODO print the iteration number and pop member
-
     if batching == True:
         batch_ods = random.sample(ods,k=5)
+        # sort (don't need to do this twice)
         batch_ods = sorted(batch_ods,key=lambda x: x[-1])[::-1]
         batch_match_results = {tripid:item for tripid, item in match_results.items() if (item['origin_node'],item['destination_node'],item['trip_start_time']) in set(batch_ods)}
     else:
@@ -255,7 +256,7 @@ def impedance_calibration(betas:np.array,
                 links.loc[(links['year']>year) & (links.loc[:,set_to_inf]==1).any(axis=1),'link_cost_override'] = True
                 
                 # re-run network update
-                updated_edge_costs = impedance_update(betas,betas_tup,
+                impedance_update(betas,betas_tup,
                         link_impedance_function,
                         base_impedance_col,
                         turn_impedance_function,
@@ -317,6 +318,7 @@ def impedance_path(turns,turn_G,links,o,d):
     # start storing linkids as str instead of int to prevent the consant floating back and forth
     o = int(o)
     d = int(d)
+
     #TODO, time this step too would it be better to do all at once vs one at a time?
     turn_G, virtual_starts, virtual_ends = modeling_turns.add_virtual_links_new(turns,turn_G,links,[o],[d])
 
@@ -327,7 +329,6 @@ def impedance_path(turns,turn_G,links,o,d):
     edge_list = nx.astar_path(turn_G,source=o,target=d,weight='weight')
     actual_edge_list = list(zip(edge_list,edge_list[1:]))
     length = np.sum([turn_G.edges.get(edge)['weight'] for edge in actual_edge_list])
-
     edge_list = edge_list[1:-1] #chop off the virtual nodes added
     turn_G = modeling_turns.remove_virtual_links_new(turn_G,virtual_starts,virtual_ends)
     return {'length':np.round(length,1), 'edge_list':edge_list}
@@ -369,6 +370,9 @@ def impedance_update(betas:np.array,betas_tup:tuple,
 
     #cacluate new total cost
     turns['total_cost'] = (turns['target_link_cost'] + turns['turn_cost'])
+
+    if turns['total_cost'].isna().any():
+        raise Exception("There are nan edge costs, exiting")
 
     #check for negative link impedance
     if (links['link_cost'] < 0).any() | (turns['total_cost'] < 0).any():
@@ -894,38 +898,12 @@ def turn_impedance_function(betas:np.array,betas_tup:tuple,turns:pd.DataFrame):
 
 ########################################################################################
 
-# def retrieve_shortest_loss_values():
-#     for key, item in full_set.items():
-#     # extract chosen and shortest routes
-#     chosen = item['matched_edges'].values
-#     shortest = item['shortest_edges'].values
-
-#     #compute the loss values (store the intermediates too so total vs mean methods can be compared)
-#     shortest_jaccard_exact_intersection, shortest_jaccard_exact_union =  stochastic_optimization.jaccard_exact(chosen,shortest,length_dict)
-#     shortest_jaccard_exact = shortest_jaccard_exact_intersection / shortest_jaccard_exact_union
-#     shortest_jaccard_buffer_intersection, shortest_jaccard_buffer_union =  stochastic_optimization.jaccard_buffer(chosen,shortest,geo_dict)
-#     shortest_jaccard_buffer = shortest_jaccard_buffer_intersection / shortest_jaccard_buffer_union
-
-#     # add to full set in additon to what's already there
-#     full_set[key].update({
-#         'chosen_length': round(np.array([length_dict.get(tripid[0],False) for tripid in chosen]).sum()/5280,2),
-#         'shortest_length': round(np.array([length_dict.get(tripid[0],False) for tripid in shortest]).sum()/5280,2),
-#         'chosen_detour': round(stochastic_optimization.detour_factor(chosen,shortest,length_dict),2),
-#         'shortest_jaccard_exact': round(shortest_jaccard_exact,2),
-#         'shortest_jaccard_exact_intersection': round(shortest_jaccard_exact_intersection,2),
-#         'shortest_jaccard_exact_union': round(shortest_jaccard_exact_union,2),
-#         'shortest_jaccard_buffer': round(shortest_jaccard_buffer,2),
-#         'shortest_jaccard_buffer_intersection': round(shortest_jaccard_buffer_intersection,2),
-#         'shortest_jaccard_buffer_union': round(shortest_jaccard_buffer_union,2),
-#     })
-#     return 
-
-# # export new version
-# with (config['calibration_fp']/'ready_for_calibration_stats.pkl').open('wb') as fh:
-#     pickle.dump(full_set,fh)
-
 
 def post_calibration_routing(links,turns,turn_G,full_ods,base_impedance_col,set_to_zero,set_to_inf,calibration_result):
+    
+    '''
+    Used after a calibration run to return the least impedance paths using the calibrated coefficients
+    '''
 
     # base_impedance_col = "travel_time_min" # set the base impedance (default is travel time)
     betas = [x['beta'] for x in calibration_result['betas_tup']] # get betas
@@ -968,6 +946,168 @@ def post_calibration_routing(links,turns,turn_G,full_ods,base_impedance_col,set_
         results_dict[(start_node,end_node)] = impedance_path(turns,turn_G,links,start_node,end_node)
     
     return results_dict
+
+def shortest_loss():
+    '''
+    Calculate loss values and metrics for the shortest path
+    '''
+
+    # Retreive shortest and chosen stats first (already calculated the shortest paths)
+    links, turns, length_dict, geo_dict, turn_G = import_calibration_network(config)
+    with (config['calibration_fp']/'ready_for_calibration.pkl').open('rb') as fh:
+        full_set = pickle.load(fh)
+    
+    for key, item in full_set.items():
+        # extract chosen and shortest routes
+        chosen = item['matched_edges'].values
+        shortest = item['shortest_edges'].values
+
+        #compute the loss values (store the intermediates too so total vs mean methods can be compared)
+        shortest_jaccard_exact_intersection, shortest_jaccard_exact_union =  jaccard_exact(chosen,shortest,length_dict)
+        shortest_jaccard_exact = shortest_jaccard_exact_intersection / shortest_jaccard_exact_union
+        shortest_jaccard_buffer_intersection, shortest_jaccard_buffer_union =  jaccard_buffer(chosen,shortest,geo_dict)
+        shortest_jaccard_buffer = shortest_jaccard_buffer_intersection / shortest_jaccard_buffer_union
+
+        # add to full set in additon to what's already there
+        full_set[key].update({
+            'chosen_length': round(np.array([length_dict.get(tripid[0],False) for tripid in chosen]).sum()/5280,2),
+            'shortest_length': round(np.array([length_dict.get(tripid[0],False) for tripid in shortest]).sum()/5280,2),
+            'chosen_detour': round(detour_factor(chosen,shortest,length_dict),2),
+            'shortest_jaccard_exact': round(shortest_jaccard_exact,2),
+            'shortest_jaccard_exact_intersection': round(shortest_jaccard_exact_intersection,2),
+            'shortest_jaccard_exact_union': round(shortest_jaccard_exact_union,2),
+            'shortest_jaccard_buffer': round(shortest_jaccard_buffer,2),
+            'shortest_jaccard_buffer_intersection': round(shortest_jaccard_buffer_intersection,2),
+            'shortest_jaccard_buffer_union': round(shortest_jaccard_buffer_union,2),
+        })
+
+    # export new version
+    with (config['calibration_fp']/'ready_for_calibration_stats.pkl').open('wb') as fh:
+        pickle.dump(full_set,fh)
+
+
+def post_calibration_loss():
+    '''
+    Calcualte loss values and metrics for the modeled routes (for all calibration runs)
+    '''
+    _, _, length_dict, geo_dict, _ = import_calibration_network(config)
+
+    #TODO add a way to exlcude calibration results
+    post_calibration_routing_fps = list((config['calibration_fp']/"post_calibration_routing").glob('*.pkl'))
+    print([post_calibration_routing_fp.stem for post_calibration_routing_fp in post_calibration_routing_fps])
+    with (config['calibration_fp']/'ready_for_calibration.pkl').open('rb') as fh:
+        full_set = pickle.load(fh)
+
+    #export modeled_results_sp so the next step can compute objective functions
+
+    for post_calibration_routing_fp in tqdm(post_calibration_routing_fps):
+        
+        with post_calibration_routing_fp.open('rb') as fh:
+            results_dict = pickle.load(fh)
+        
+        modeled_results_dict = {}
+        # we could try storing these
+        for tripid, item in full_set.items(): # make sure you import this
+            chosen = item['matched_edges'].values
+            shortest = item['shortest_edges'].values
+            od = (item['origin_node'],item['destination_node'])
+            modeled = results_dict[od]['edge_list']
+        
+            #compute the loss values (store the intermediates too so total vs mean methods can be compared)
+            modeled_jaccard_exact_intersection, modeled_jaccard_exact_union =  jaccard_exact(chosen,modeled,length_dict)
+            modeled_jaccard_exact = modeled_jaccard_exact_intersection / modeled_jaccard_exact_union
+            modeled_jaccard_buffer_intersection, modeled_jaccard_buffer_union =  jaccard_buffer(chosen,modeled,geo_dict)
+            modeled_jaccard_buffer = modeled_jaccard_buffer_intersection / modeled_jaccard_buffer_union
+
+            modeled_results_dict[tripid] = {
+                'modeled_edges': pd.DataFrame(modeled,columns=['linkid','reverse_link']),
+                'modeled_length': round(np.array([length_dict.get(tripid[0],0) for tripid in modeled]).sum()/5280,1),
+                'modeled_detour': round(detour_factor(modeled,shortest,length_dict),2),
+                'modeled_jaccard_exact': round(modeled_jaccard_exact,2),
+                'modeled_jaccard_exact_intersection': round(modeled_jaccard_exact_intersection,2),
+                'modeled_jaccard_exact_union': round(modeled_jaccard_exact_union,2),
+                'modeled_jaccard_buffer': round(modeled_jaccard_buffer,2),
+                'modeled_jaccard_buffer_intersection': round(modeled_jaccard_buffer_intersection,2),
+                'modeled_jaccard_buffer_union': round(modeled_jaccard_buffer_union,2),
+            }
+        
+        # print('Mean Jaccard Index',round(jaccard_mean,2),'Mean Buffer',round(buffer_mean,2))
+        with (config['calibration_fp']/'post_calibration_loss'/(post_calibration_routing_fp.stem+'.pkl')).open('wb') as fh:
+            pickle.dump(modeled_results_dict,fh)
+
+def post_calibration_betas():
+    '''
+    Returns dataframe of all the estimated coefficients in the columns where each row is a model
+    '''
+    calibration_result_fps = list((config['calibration_fp']/"calibration_results").glob('*.pkl'))
+    print([calibration_result_fp.stem for calibration_result_fp in calibration_result_fps])
+
+    beta_vals = {}
+    for idx, calibration_result_fp in enumerate(calibration_result_fps):
+        with calibration_result_fp.open('rb') as fh:
+            calibration_result = pickle.load(fh)
+        beta_vals[calibration_result_fp.stem] = {x['col']:x['beta'] for x in calibration_result['betas_tup']}
+    beta_vals = pd.DataFrame().from_dict(beta_vals,orient='index').round(2)
+
+    return beta_vals
+
+#TDOO for these add the shortest result too
+from collections import defaultdict
+def post_calibration_disaggregate():
+    '''
+    Returns a dataframe where the rows are trips and the columns are length, detour, exact, and buffer
+    Appends the shortest results to the left
+    '''
+    post_calibration_loss_fps = list((config['calibration_fp']/"post_calibration_loss").glob('*.pkl'))
+    print([post_calibration_loss_fp.stem for post_calibration_loss_fp in post_calibration_loss_fps])
+    all_loss_stats = defaultdict(dict)
+    for post_calibration_loss_fp in tqdm(post_calibration_loss_fps):
+        with post_calibration_loss_fp.open('rb') as fh:
+            loss_dict = pickle.load(fh)
+        #remove the edges
+        for tripid, item in loss_dict.items():
+            #remove certain fields
+            for key in list(item.keys()):
+                if ('_intersection' in key) | ('_union' in key) | (key=='modeled_edges'):
+                    item.pop(key)
+            renamed = {post_calibration_loss_fp.stem+'_'+key.removeprefix('modeled_'):sub_item for key, sub_item in item.items()}
+            all_loss_stats[tripid].update(renamed)
+    all_loss_stats = pd.DataFrame.from_dict(all_loss_stats,orient='index')
+    return all_loss_stats
+
+def post_calibration_aggregated():
+    '''
+    Calculates aggregated stats for all of the calibration results
+    
+    Appends shortest results to the top
+    '''
+    post_calibration_loss_fps = list((config['calibration_fp']/"post_calibration_loss").glob('*.pkl'))
+
+    # disaggregated
+    aggregated_loss = {}
+    for post_calibration_loss_fp in tqdm(post_calibration_loss_fps):
+        with post_calibration_loss_fp.open('rb') as fh:
+            loss_dict = pickle.load(fh)
+        
+        jaccard_exact_mean = np.array([item['modeled_jaccard_exact'] for tripid, item in loss_dict.items()]).mean()
+        jaccard_exact_total = np.array([(item['modeled_jaccard_exact_intersection'],item['modeled_jaccard_exact_union']) for tripid, item in loss_dict.items()])
+        jaccard_exact_total = jaccard_exact_total[:,0].sum() / jaccard_exact_total[:,1].sum()
+
+        jaccard_buffer_mean = np.array([item['modeled_jaccard_buffer'] for tripid, item in loss_dict.items()]).mean()
+        jaccard_buffer_total = np.array([(item['modeled_jaccard_buffer_intersection'],item['modeled_jaccard_buffer_union']) for tripid, item in loss_dict.items()])
+        jaccard_buffer_total = jaccard_buffer_total[:,0].sum() / jaccard_buffer_total[:,1].sum()
+
+        aggregated_loss[post_calibration_loss_fp.stem] = {
+            'jaccard_exact_mean': jaccard_exact_mean,
+            'jaccard_exact_total': jaccard_exact_total,
+            'jaccard_buffer_mean': jaccard_buffer_mean,
+            'jaccard_buffer_total': jaccard_buffer_total, 
+        }
+    aggregated_loss = pd.DataFrame.from_dict(aggregated_loss,orient='index').round(2)
+    return aggregated_loss
+
+
+
 
 ########################################################################################
 

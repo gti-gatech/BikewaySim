@@ -10,29 +10,21 @@ calibration_name = Path(__file__).stem
 if __name__ == '__main__':
     # determine variables, impedance type, and search range
     betas_tup = (
-        {'col':'2lpd','type':'link','range':[0,3]},
-        {'col':'3+lpd','type':'link','range':[0,3]},
-        {'col':'(30,40] mph','type':'link','range':[0,3]},
-        {'col':'(40,inf) mph','type':'link','range':[0,3]},
-        {'col':'[4k,10k) aadt','type':'link','range':[0,3]},
-        {'col':'[10k,inf) aadt','type':'link','range':[0,3]},
-        {'col':'[4,6) grade','type':'link','range':[0,3]},
-        {'col':'[6,inf) grade','type':'link','range':[0,3]},
-        {'col':'bike lane','type':'link','range':[-1,0]},
-        {'col':'cycletrack','type':'link','range':[-1,0]},
-        {'col':'multi use path','type':'link','range':[-1,0]},
+        {'col':'multi use path report','type':'link','range':[-1,1]},
+        {'col':'bike lane report','type':'link','range':[-1,1]},
+        {'col':'lanes report','type':'link','range':[0,2]},
+        {'col':'above_4 report','type':'link','range':[0,2]},
         {'col':'unsig_crossing','type':'turn','range':[0,2]}
     )
-    set_to_zero = ['bike lane','cycletrack','multi use path']
-    set_to_inf = ['not_street']#['multi use path']
-
+    set_to_zero = []#['bike lane']
+    set_to_inf = []#['multi use path_original']
     # determine the objective function to use and other settings
-    objective_function = stochastic_optimization.jaccard_buffer_mean
+    objective_function = stochastic_optimization.jaccard_exact_mean
     batching = False
     stochastic_optimization_settings = {
         'method':'pso',
-        'options': {'maxiter':100,'popsize':5}
-        }
+        'options': {'maxiter':100,'popsize':3}
+    }
     print_results = False
 
     with (config['calibration_fp']/'ready_for_calibration.pkl').open('rb') as fh:

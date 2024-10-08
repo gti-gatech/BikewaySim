@@ -21,7 +21,7 @@ if __name__ == '__main__':
         {'col':'bike lane','type':'link','range':[-1,0]},
         {'col':'cycletrack','type':'link','range':[-1,0]},
         {'col':'multi use path','type':'link','range':[-1,0]},
-        {'col':'unsig_crossing','type':'turn','range':[0,2]}
+        # {'col':'unsig_crossing','type':'turn','range':[0,2]}
     )
     set_to_zero = ['bike lane','cycletrack','multi use path']
     set_to_inf = ['not_street']#['multi use path']

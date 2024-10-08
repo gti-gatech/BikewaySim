@@ -19,20 +19,19 @@ if __name__ == '__main__':
         {'col':'[4,6) grade','type':'link','range':[0,3]},
         {'col':'[6,inf) grade','type':'link','range':[0,3]},
         {'col':'bike lane','type':'link','range':[-1,0]},
-        # {'col':'cycletrack','type':'link','range':[-1,0]},
-        # {'col':'multi use path','type':'link','range':[-1,0]},
-        {'col':'multi use path_original','type':'link','range':[-1,1]},
-        # {'col':'unsig_major_road_crossing','type':'turn','range':[0,2]}
+        {'col':'cycletrack','type':'link','range':[-1,0]},
+        {'col':'multi use path','type':'link','range':[-1,0]},
+        {'col':'unsig_crossing','type':'turn','range':[0,2]}
     )
-    set_to_zero = []#['bike lane']
-    set_to_inf = []#['multi use path_original']
+    set_to_zero = []#['bike lane','cycletrack','multi use path']
+    set_to_inf = []#['not_street']#['multi use path']
 
     # determine the objective function to use and other settings
-    objective_function = stochastic_optimization.jaccard_buffer_mean
+    objective_function = stochastic_optimization.jaccard_buffer_total
     batching = False
     stochastic_optimization_settings = {
         'method':'pso',
-        'options': {'maxiter':100,'popsize':3}
+        'options': {'maxiter':100,'popsize':5}
         }
     print_results = False
 

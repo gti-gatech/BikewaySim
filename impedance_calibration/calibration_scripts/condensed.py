@@ -12,8 +12,7 @@ if __name__ == '__main__':
     betas_tup = (
         {'col':'2lpd','type':'link','range':[0,3]},
         {'col':'3+lpd','type':'link','range':[0,3]},
-        {'col':'(30,40] mph','type':'link','range':[0,3]},
-        {'col':'(40,inf) mph','type':'link','range':[0,3]},
+        {'col':'(30,inf) mph','type':'link','range':[0,3]},
         {'col':'[4k,10k) aadt','type':'link','range':[0,3]},
         {'col':'[10k,inf) aadt','type':'link','range':[0,3]},
         {'col':'[4,6) grade','type':'link','range':[0,3]},
