@@ -105,134 +105,6 @@ def match_results_to_ods_w_year(match_results):
 
 import datetime
 #TODO rename variables like full_set to match_results or matched_traces, just develop some type of convention
-def full_impedance_calibration(betas_tup,
-                               set_to_zero,
-                               set_to_inf,
-                               objective_function,
-                               batching,
-                               stochastic_optimization_settings,
-                               calibration_name,
-                               print_results = False, # default is false
-                               base_impedance_col='travel_time_min',
-                               user = None, # tuple with (userid,list_of_trips) (OPTIONAL)
-                               ):
-    '''
-    Use this to run the impedance calibration. Parameters are subject to change but it's meant to represent the
-    parameters you actually want to change and not ones that are going to be repeated across calibration runs such
-    as the network. This is subject to change if it seems some new variables should be added.
-
-    All results save as pickle files into one of two sets of directories depending on if using user by user calibration
-    or all trips calibration.
-
-    '''
-        
-    # import network
-    links, turns, length_dict, geo_dict, turn_G = import_calibration_network(config)
-
-    # import matched traces (all of them at first)
-    with (config['calibration_fp']/'ready_for_calibration.pkl').open('rb') as fh:
-        full_set = pickle.load(fh)
-
-    # DEBUGGING
-    # subset = list(full_set.keys())[0:100]
-    # full_set = {tripid:item for tripid, item in full_set.items() if tripid in subset}
-
-    # subset to a user's trips if user arguement is provided
-    if user is not None:
-        full_set = {tripid:item for tripid, item in full_set.items() if tripid in user[1]}
-
-    # TODO clean up how this is done
-    # NOTE need a tuple for minimize but this could be replaced with a function that converts a dict to tuple
-    args = (
-        [], # empty list for storing past calibration results
-        betas_tup, # tuple containing the impedance spec
-        set_to_zero, # if the trip year exceeds the link year set these attributes to zero
-        set_to_inf, # if the trip year exceeds the link year set the cost to 9e9
-        match_results_to_ods_w_year(full_set), # list of OD network node pairs needed for shortest path routing
-        full_set, # dict containing the origin/dest node and map matched edges
-        link_impedance_function, # link impedance function to use
-        base_impedance_col, # column with the base the base impedance in travel time or distance
-        turn_impedance_function, # turn impedance function to use
-        links,turns,turn_G, # network parts
-        objective_function, # loss function to use
-        {'length_dict':length_dict,'geo_dict':geo_dict},#,'trace_dict':traces}, # keyword arguments for loss function
-        print_results, #whether to print the results of each iteration (useful when testing the calibration on its own)
-        True, #whether to store calibration results
-        batching # whether to batch results to help speed up computation time, if yes input the number to batch with
-    )
-    # turn the argument tuple into a named tuple
-    # TODO it should convert an ordered dict instead but this works
-    # args = Calibration(*args)
-
-    # run the calibration
-    start = time.time()
-    if print_results:
-        print([x['col'] for x in betas_tup]+['objective_function'])
-    x = minimize(impedance_calibration,
-                extract_bounds(betas_tup),
-                args=args,
-                **stochastic_optimization_settings)
-    end = time.time()
-    
-    if print_results:
-        print('Took',str(pd.Timedelta(seconds=end-start).round('s')),'hours')
-        print(f"{objective_function.__name__}: {x.fun}")
-        print(x)
-
-    # assemble dictionary of the calibration results
-    calibration_result = {
-        'betas_tup': tuple({**item,'beta':x.x[idx].round(4)} for idx,item in enumerate(betas_tup)), # contains the betas
-        'set_to_zero': set_to_zero,
-        'set_to_inf': set_to_inf,
-        'settings': stochastic_optimization_settings, # contains the optimization settings
-        'objective_function': objective_function.__name__, # objective function used
-        'results': x, # stochastic optimization outputs
-        'trips_calibrated': set(full_set.keys()), # saves which trips were calibrated
-        'past_vals': args[0], # all of the past values/guesses
-        'runtime': pd.Timedelta(end-start),
-        'time': datetime.datetime.now()
-    }
-
-    calibration_result_fp, post_calibration_routing_fp = handle_directories(user,calibration_name)
-
-    with uniquify(calibration_result_fp).open('wb') as fh:
-        pickle.dump(calibration_result,fh)
-    
-    # post process the model results now so they're ready for analysis and visualization
-    modeled_ods = post_calibration_routing(links,turns,turn_G,match_results_to_ods_w_year(full_set),base_impedance_col,set_to_zero,set_to_inf,calibration_result)
-    
-    with uniquify(post_calibration_routing_fp).open('wb') as fh:
-        pickle.dump(modeled_ods,fh)
-        
-    return True
-    # if calibration_result['results'].success:
-
-
-    #     return True
-    # else:
-       
-    #     return False
-
-def handle_directories(user,calibration_name):
-    # handle the directories
-    if user is not None:
-        calibration_result_fp = f"user_calibration_results/{user[0]}_{calibration_name}.pkl"
-        post_calibration_routing_fp = f"user_post_calibration_routing/{user[0]}_{calibration_name}.pkl"
-    else:
-        calibration_result_fp = f"calibration_results/{calibration_name}.pkl"
-        post_calibration_routing_fp = f"post_calibration_routing/{calibration_name}.pkl"
-    
-    calibration_result_fp = config['calibration_fp'] / calibration_result_fp
-    post_calibration_routing_fp = config['calibration_fp'] / post_calibration_routing_fp
-
-    if calibration_result_fp.parent.exists() == False:
-        calibration_result_fp.parent.mkdir()
-    if post_calibration_routing_fp.parent.exists() == False:
-        post_calibration_routing_fp.parent.mkdir()
-    
-    return calibration_result_fp, post_calibration_routing_fp
-
-
 
 def impedance_calibration(betas:np.array,
                           past_vals:list,
@@ -1148,8 +1020,147 @@ def post_calibration_aggregated():
     aggregated_loss = pd.DataFrame.from_dict(aggregated_loss,orient='index').round(2)
     return aggregated_loss
 
+########################################################################################
+
+# Scripting Calibration Runs
+
+########################################################################################
+
+def full_impedance_calibration(
+        calibration_name,
+        betas_tup,
+        objective_function=jaccard_buffer_mean,
+        set_to_zero=[],
+        set_to_inf=[],
+        batching=False,
+        stochastic_optimization_settings={'method':'pso','options':{'maxiter':100,'popsize':5}},
+        print_results = False, # default is false
+        base_impedance_col='travel_time_min',
+        user = None, # tuple with (userid,list_of_trips) (OPTIONAL)
+        ):
+    
+    '''
+    Use this to run the impedance calibration. Parameters are subject to change but it's meant to represent the
+    parameters you actually want to change and not ones that are going to be repeated across calibration runs such
+    as the network. This is subject to change if it seems some new variables should be added.
+
+    All results save as pickle files into one of two sets of directories depending on if using user by user calibration
+    or all trips calibration.
+
+    '''
+        
+    # import network
+    links, turns, length_dict, geo_dict, turn_G = import_calibration_network(config)
+
+    # import matched traces (all of them at first)
+    with (config['calibration_fp']/'ready_for_calibration.pkl').open('rb') as fh:
+        full_set = pickle.load(fh)
+
+    # DEBUGGING
+    # subset = list(full_set.keys())[0:100]
+    # full_set = {tripid:item for tripid, item in full_set.items() if tripid in subset}
+
+    # subset to a user's trips if user arguement is provided
+    if user is not None:
+        full_set = {tripid:item for tripid, item in full_set.items() if tripid in user[1]}
+
+    # TODO clean up how this is done
+    # NOTE need a tuple for minimize but this could be replaced with a function that converts a dict to tuple
+    args = (
+        [], # empty list for storing past calibration results
+        betas_tup, # tuple containing the impedance spec
+        set_to_zero, # if the trip year exceeds the link year set these attributes to zero
+        set_to_inf, # if the trip year exceeds the link year set the cost to 9e9
+        match_results_to_ods_w_year(full_set), # list of OD network node pairs needed for shortest path routing
+        full_set, # dict containing the origin/dest node and map matched edges
+        link_impedance_function, # link impedance function to use
+        base_impedance_col, # column with the base the base impedance in travel time or distance
+        turn_impedance_function, # turn impedance function to use
+        links,turns,turn_G, # network parts
+        objective_function, # loss function to use
+        {'length_dict':length_dict,'geo_dict':geo_dict},#,'trace_dict':traces}, # keyword arguments for loss function
+        print_results, #whether to print the results of each iteration (useful when testing the calibration on its own)
+        True, #whether to store calibration results
+        batching # whether to batch results to help speed up computation time, if yes input the number to batch with
+    )
+    # turn the argument tuple into a named tuple
+    # TODO it should convert an ordered dict instead but this works
+    # args = Calibration(*args)
+
+    # run the calibration
+    start = time.time()
+    if print_results:
+        print([x['col'] for x in betas_tup]+['objective_function'])
+    x = minimize(impedance_calibration,
+                extract_bounds(betas_tup),
+                args=args,
+                **stochastic_optimization_settings)
+    end = time.time()
+    
+    if print_results:
+        print('Took',str(pd.Timedelta(seconds=end-start).round('s')),'hours')
+        print(f"{objective_function.__name__}: {x.fun}")
+        print(x)
+
+    # assemble dictionary of the calibration results
+    calibration_result = {
+        'betas_tup': tuple({**item,'beta':x.x[idx].round(4)} for idx,item in enumerate(betas_tup)), # contains the betas
+        'set_to_zero': set_to_zero,
+        'set_to_inf': set_to_inf,
+        'settings': stochastic_optimization_settings, # contains the optimization settings
+        'objective_function': objective_function.__name__, # objective function used
+        'results': x, # stochastic optimization outputs
+        'trips_calibrated': set(full_set.keys()), # saves which trips were calibrated
+        'past_vals': args[0], # all of the past values/guesses
+        'runtime': pd.Timedelta(end-start),
+        'time': datetime.datetime.now()
+    }
+
+    calibration_result_fp, post_calibration_routing_fp = handle_directories(user,calibration_name)
+
+    with uniquify(calibration_result_fp).open('wb') as fh:
+        pickle.dump(calibration_result,fh)
+    
+    # post process the model results now so they're ready for analysis and visualization
+    modeled_ods = post_calibration_routing(links,turns,turn_G,match_results_to_ods_w_year(full_set),base_impedance_col,set_to_zero,set_to_inf,calibration_result)
+    
+    with uniquify(post_calibration_routing_fp).open('wb') as fh:
+        pickle.dump(modeled_ods,fh)
+        
+    return True
+    # if calibration_result['results'].success:
 
 
+    #     return True
+    # else:
+       
+    #     return False
+
+def handle_directories(user,calibration_name):
+    # handle the directories
+    if user is not None:
+        calibration_result_fp = f"user_calibration_results/{user[0]}_{calibration_name}.pkl"
+        post_calibration_routing_fp = f"user_post_calibration_routing/{user[0]}_{calibration_name}.pkl"
+    else:
+        calibration_result_fp = f"calibration_results/{calibration_name}.pkl"
+        post_calibration_routing_fp = f"post_calibration_routing/{calibration_name}.pkl"
+    
+    calibration_result_fp = config['calibration_fp'] / calibration_result_fp
+    post_calibration_routing_fp = config['calibration_fp'] / post_calibration_routing_fp
+
+    if calibration_result_fp.parent.exists() == False:
+        calibration_result_fp.parent.mkdir()
+    if post_calibration_routing_fp.parent.exists() == False:
+        post_calibration_routing_fp.parent.mkdir()
+    
+    return calibration_result_fp, post_calibration_routing_fp
+
+# Helper function to unpack the dictionary and call example_function
+def run_calibration(task):
+    task_dict, run_num, NUM_RUNS = task
+    task_name = f"{task_dict['calibration_name']} ({run_num+1}/{NUM_RUNS})"
+    success = full_impedance_calibration(**task_dict)
+    return task_name, success
 
 ########################################################################################
 
