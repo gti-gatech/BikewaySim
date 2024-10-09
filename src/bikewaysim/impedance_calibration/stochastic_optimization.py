@@ -111,17 +111,35 @@ def full_impedance_calibration(betas_tup,
                                objective_function,
                                batching,
                                stochastic_optimization_settings,
-                               full_set,
-                               print_results,
                                calibration_name,
+                               print_results = False, # default is false
                                base_impedance_col='travel_time_min',
+                               user = None, # tuple with (userid,list_of_trips) (OPTIONAL)
                                ):
     '''
-    Use this to run the impedance calibration with less code
-    '''
+    Use this to run the impedance calibration. Parameters are subject to change but it's meant to represent the
+    parameters you actually want to change and not ones that are going to be repeated across calibration runs such
+    as the network. This is subject to change if it seems some new variables should be added.
 
+    All results save as pickle files into one of two sets of directories depending on if using user by user calibration
+    or all trips calibration.
+
+    '''
+        
     # import network
     links, turns, length_dict, geo_dict, turn_G = import_calibration_network(config)
+
+    # import matched traces (all of them at first)
+    with (config['calibration_fp']/'ready_for_calibration.pkl').open('rb') as fh:
+        full_set = pickle.load(fh)
+
+    # DEBUGGING
+    # subset = list(full_set.keys())[0:100]
+    # full_set = {tripid:item for tripid, item in full_set.items() if tripid in subset}
+
+    # subset to a user's trips if user arguement is provided
+    if user is not None:
+        full_set = {tripid:item for tripid, item in full_set.items() if tripid in user[1]}
 
     # TODO clean up how this is done
     # NOTE need a tuple for minimize but this could be replaced with a function that converts a dict to tuple
@@ -175,22 +193,46 @@ def full_impedance_calibration(betas_tup,
         'time': datetime.datetime.now()
     }
 
-    # # if calibration result is successful run the post calibration
-    # if calibration_result['results'].success:
-    print(calibration_name,'successful')
-    # export calibration result
-    calibration_result_fp = config['calibration_fp'] / f"calibration_results/{calibration_name}.pkl"
+    calibration_result_fp, post_calibration_routing_fp = handle_directories(user,calibration_name)
+
     with uniquify(calibration_result_fp).open('wb') as fh:
         pickle.dump(calibration_result,fh)
     
     # post process the model results now so they're ready for analysis and visualization
     modeled_ods = post_calibration_routing(links,turns,turn_G,match_results_to_ods_w_year(full_set),base_impedance_col,set_to_zero,set_to_inf,calibration_result)
-    post_calibration_routing_fp = config['calibration_fp'] / f"post_calibration_routing/{calibration_name}.pkl"
+    
     with uniquify(post_calibration_routing_fp).open('wb') as fh:
         pickle.dump(modeled_ods,fh)
+        
+    return True
+    # if calibration_result['results'].success:
 
+
+    #     return True
     # else:
-    #     print(calibration_name,'failed:',x.message)
+       
+    #     return False
+
+def handle_directories(user,calibration_name):
+    # handle the directories
+    if user is not None:
+        calibration_result_fp = f"user_calibration_results/{user[0]}_{calibration_name}.pkl"
+        post_calibration_routing_fp = f"user_post_calibration_routing/{user[0]}_{calibration_name}.pkl"
+    else:
+        calibration_result_fp = f"calibration_results/{calibration_name}.pkl"
+        post_calibration_routing_fp = f"post_calibration_routing/{calibration_name}.pkl"
+    
+    calibration_result_fp = config['calibration_fp'] / calibration_result_fp
+    post_calibration_routing_fp = config['calibration_fp'] / post_calibration_routing_fp
+
+    if calibration_result_fp.parent.exists() == False:
+        calibration_result_fp.parent.mkdir()
+    if post_calibration_routing_fp.parent.exists() == False:
+        post_calibration_routing_fp.parent.mkdir()
+    
+    return calibration_result_fp, post_calibration_routing_fp
+
+
 
 def impedance_calibration(betas:np.array,
                           past_vals:list,
