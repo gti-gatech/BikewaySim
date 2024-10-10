@@ -866,6 +866,8 @@ def shortest_loss():
     Calculate loss values and metrics for the shortest path
     '''
 
+    #TODO put users in this too
+
     # Retreive shortest and chosen stats first (already calculated the shortest paths)
     links, turns, length_dict, geo_dict, turn_G = import_calibration_network(config)
     with (config['calibration_fp']/'ready_for_calibration.pkl').open('rb') as fh:
@@ -899,24 +901,71 @@ def shortest_loss():
     with (config['calibration_fp']/'ready_for_calibration_stats.pkl').open('wb') as fh:
         pickle.dump(full_set,fh)
 
+def file_check(user=False):
+    #TODO add a way to exlcude calibration results
+    if user:
+        calibration_results_dir = config['calibration_fp']/"user_calibration_results"
+        post_calibration_routing_dir = config['calibration_fp']/"user_post_calibration_routing"
+        post_calibration_loss_dir = config['calibration_fp']/"user_post_calibration_loss"
+    else:
+        calibration_results_dir = config['calibration_fp']/"calibration_results"
+        post_calibration_routing_dir = config['calibration_fp']/"post_calibration_routing"
+        post_calibration_loss_dir = config['calibration_fp']/"post_calibration_loss"
 
-def post_calibration_loss():
+    if post_calibration_loss_dir.exists() == False:
+        post_calibration_loss_dir.mkdir()
+    
+    # get the intersection of both
+    calibration_results = [x.stem for x in calibration_results_dir.glob('*.pkl')]
+    post_calibration_routing = [x.stem for x in post_calibration_routing_dir.glob('*.pkl')]
+    calibrations = list(set.intersection(set(calibration_results),set(post_calibration_routing)))
+    print('Available calibrations:',list(calibrations))
+
+    return calibration_results_dir, post_calibration_routing_dir, post_calibration_loss_dir, calibrations
+
+import re
+def get_calibration_name_parameters(calibration_name,user=False):
+
+    output = {}
+
+    if user:
+        output['userid'] = calibration_name.split('_')[0]
+        calibration_name = calibration_name.split('_',maxsplit=1)[1]
+
+    # get run number
+    pattern = r'\((\d+)\)'
+    run_number = re.findall(pattern,calibration_name)
+
+    if len(run_number) == 0:
+        output['run_number'] = 0
+        output['calibration'] = calibration_name.strip()
+    else:
+        output['run_number'] = run_number[0]
+        output['calibration'] = calibration_name.split('(')[0].strip()
+    
+    return output
+
+def post_calibration_loss(user=False):
     '''
     Calcualte loss values and metrics for the modeled routes (for all calibration runs)
     '''
     _, _, length_dict, geo_dict, _ = import_calibration_network(config)
 
-    #TODO add a way to exlcude calibration results
-    post_calibration_routing_fps = list((config['calibration_fp']/"post_calibration_routing").glob('*.pkl'))
-    print([post_calibration_routing_fp.stem for post_calibration_routing_fp in post_calibration_routing_fps])
+    calibration_results_dir, post_calibration_routing_dir, post_calibration_loss_dir, calibrations = file_check(user)
+
+    # import all trips
     with (config['calibration_fp']/'ready_for_calibration.pkl').open('rb') as fh:
-        full_set = pickle.load(fh)
+        full_set_all = pickle.load(fh)
 
-    #export modeled_results_sp so the next step can compute objective functions
-
-    for post_calibration_routing_fp in tqdm(post_calibration_routing_fps):
+    for calibration in tqdm(calibrations):
         
-        with post_calibration_routing_fp.open('rb') as fh:
+        with (calibration_results_dir / f"{calibration}.pkl").open('rb') as fh:
+            calibration_result = pickle.load(fh)
+
+        # subset to the trips used for calibration
+        full_set = {tripid:item for tripid, item in full_set_all.items() if tripid in calibration_result['trips_calibrated']}
+        
+        with (post_calibration_routing_dir / f"{calibration}.pkl").open('rb') as fh:
             results_dict = pickle.load(fh)
         
         modeled_results_dict = {}
@@ -945,38 +994,39 @@ def post_calibration_loss():
                 'modeled_jaccard_buffer_union': round(modeled_jaccard_buffer_union,2),
             }
         
-        # print('Mean Jaccard Index',round(jaccard_mean,2),'Mean Buffer',round(buffer_mean,2))
-        with (config['calibration_fp']/'post_calibration_loss'/(post_calibration_routing_fp.stem+'.pkl')).open('wb') as fh:
+        with (post_calibration_loss_dir / f"{calibration}.pkl").open('wb') as fh:
             pickle.dump(modeled_results_dict,fh)
 
-def post_calibration_betas():
+def post_calibration_betas(user=False):
     '''
     Returns dataframe of all the estimated coefficients in the columns where each row is a model
     '''
-    calibration_result_fps = list((config['calibration_fp']/"calibration_results").glob('*.pkl'))
-    print([calibration_result_fp.stem for calibration_result_fp in calibration_result_fps])
 
-    beta_vals = {}
-    for idx, calibration_result_fp in enumerate(calibration_result_fps):
-        with calibration_result_fp.open('rb') as fh:
+    calibration_results_dir, post_calibration_routing_dir, post_calibration_loss_dir, calibrations = file_check(user)
+
+    beta_vals = []
+    for calibration in calibrations:
+        with (calibration_results_dir / f"{calibration}.pkl").open('rb') as fh:
             calibration_result = pickle.load(fh)
-        beta_vals[calibration_result_fp.stem] = {x['col']:x['beta'] for x in calibration_result['betas_tup']}
-    beta_vals = pd.DataFrame().from_dict(beta_vals,orient='index').round(2)
+        calibration_params = get_calibration_name_parameters(calibration,user)
+        beta_vals.append({**calibration_params,**{x['col']:round(x['beta'],3) for x in calibration_result['betas_tup']}})
+    beta_vals = pd.DataFrame().from_records(beta_vals)
 
     return beta_vals
 
 #TDOO for these add the shortest result too
 from collections import defaultdict
-def post_calibration_disaggregate():
+def post_calibration_disaggregate(user):
     '''
     Returns a dataframe where the rows are trips and the columns are length, detour, exact, and buffer
     Appends the shortest results to the left
     '''
-    post_calibration_loss_fps = list((config['calibration_fp']/"post_calibration_loss").glob('*.pkl'))
-    print([post_calibration_loss_fp.stem for post_calibration_loss_fp in post_calibration_loss_fps])
+    
+    calibration_results_dir, post_calibration_routing_dir, post_calibration_loss_dir, calibrations = file_check(user)
+    
     all_loss_stats = defaultdict(dict)
-    for post_calibration_loss_fp in tqdm(post_calibration_loss_fps):
-        with post_calibration_loss_fp.open('rb') as fh:
+    for calibration in tqdm(calibrations):
+        with (post_calibration_loss_dir / f"{calibration}.pkl").open('rb') as fh:
             loss_dict = pickle.load(fh)
         #remove the edges
         for tripid, item in loss_dict.items():
@@ -984,25 +1034,77 @@ def post_calibration_disaggregate():
             for key in list(item.keys()):
                 if ('_intersection' in key) | ('_union' in key) | (key=='modeled_edges'):
                     item.pop(key)
-            renamed = {post_calibration_loss_fp.stem+'_'+key.removeprefix('modeled_'):sub_item for key, sub_item in item.items()}
+            renamed = {calibration+'_'+key.removeprefix('modeled_'):sub_item for key, sub_item in item.items()}
             all_loss_stats[tripid].update(renamed)
     all_loss_stats = pd.DataFrame.from_dict(all_loss_stats,orient='index')
     return all_loss_stats
 
-def post_calibration_aggregated():
+def shortest_aggregated(user=False):
     '''
-    Calculates aggregated stats for all of the calibration results
+    Gets aggregated shortest path stats so they can be appened to the post calibration one
+    '''
+    # has all the shortest stats
+    with (config['calibration_fp']/'ready_for_calibration_stats.pkl').open('rb') as fh:
+        shortest = pickle.load(fh)
+    # has all the user and trip pairs
+    with (config['calibration_fp']/'ready_for_calibration_users.pkl').open('rb') as fh:
+        ready_for_calibration_users = pickle.load(fh)
+
+    aggregated_loss =[]
+    if user:
+        for userid, tripids in ready_for_calibration_users:
+            user_shortest = {tripid:item for tripid, item in shortest.items() if tripid in tripids}
+
+            jaccard_exact_mean = np.array([item['shortest_jaccard_exact'] for tripid, item in user_shortest.items()]).mean()
+            jaccard_exact_total = np.array([(item['shortest_jaccard_exact_intersection'],item['shortest_jaccard_exact_union']) for tripid, item in user_shortest.items()])
+            jaccard_exact_total = jaccard_exact_total[:,0].sum() / jaccard_exact_total[:,1].sum()
+
+            jaccard_buffer_mean = np.array([item['shortest_jaccard_buffer'] for tripid, item in user_shortest.items()]).mean()
+            jaccard_buffer_total = np.array([(item['shortest_jaccard_buffer_intersection'],item['shortest_jaccard_buffer_union']) for tripid, item in user_shortest.items()])
+            jaccard_buffer_total = jaccard_buffer_total[:,0].sum() / jaccard_buffer_total[:,1].sum()
     
-    Appends shortest results to the top
+            aggregated_loss.append({
+                'userid':userid,
+                'jaccard_exact_mean': round(jaccard_exact_mean,2),
+                'jaccard_exact_total': round(jaccard_exact_total,2),
+                'jaccard_buffer_mean': round(jaccard_buffer_mean,2),
+                'jaccard_buffer_total': round(jaccard_buffer_total,2)
+            })
+    else:
+        jaccard_exact_mean = np.array([item['shortest_jaccard_exact'] for tripid, item in shortest.items()]).mean()
+        jaccard_exact_total = np.array([(item['shortest_jaccard_exact_intersection'],item['shortest_jaccard_exact_union']) for tripid, item in shortest.items()])
+        jaccard_exact_total = jaccard_exact_total[:,0].sum() / jaccard_exact_total[:,1].sum()
+
+        jaccard_buffer_mean = np.array([item['shortest_jaccard_buffer'] for tripid, item in shortest.items()]).mean()
+        jaccard_buffer_total = np.array([(item['shortest_jaccard_buffer_intersection'],item['shortest_jaccard_buffer_union']) for tripid, item in shortest.items()])
+        jaccard_buffer_total = jaccard_buffer_total[:,0].sum() / jaccard_buffer_total[:,1].sum()
+        
+        aggregated_loss.append({
+            'jaccard_exact_mean': round(jaccard_exact_mean,2),
+            'jaccard_exact_total': round(jaccard_exact_total,2),
+            'jaccard_buffer_mean': round(jaccard_buffer_mean,2),
+            'jaccard_buffer_total': round(jaccard_buffer_total,2)
+            })
+    
+    aggregated_loss = pd.DataFrame.from_records(aggregated_loss)
+    return aggregated_loss
+
+    
+def post_calibration_aggregated(user=False):
     '''
-    post_calibration_loss_fps = list((config['calibration_fp']/"post_calibration_loss").glob('*.pkl'))
+    Calculates aggregated stats for all of the calibration results.
+
+    Every row is a calibration result. If user based, then every row is a calibration result for a user.
+    
+    '''
+    calibration_results_dir, post_calibration_routing_dir, post_calibration_loss_dir, calibrations = file_check(user)
 
     # disaggregated
-    aggregated_loss = {}
-    for post_calibration_loss_fp in tqdm(post_calibration_loss_fps):
-        with post_calibration_loss_fp.open('rb') as fh:
+    aggregated_loss = []
+    for calibration in calibrations:
+        with (post_calibration_loss_dir / f"{calibration}.pkl").open('rb') as fh:
             loss_dict = pickle.load(fh)
-        
+
         jaccard_exact_mean = np.array([item['modeled_jaccard_exact'] for tripid, item in loss_dict.items()]).mean()
         jaccard_exact_total = np.array([(item['modeled_jaccard_exact_intersection'],item['modeled_jaccard_exact_union']) for tripid, item in loss_dict.items()])
         jaccard_exact_total = jaccard_exact_total[:,0].sum() / jaccard_exact_total[:,1].sum()
@@ -1011,13 +1113,16 @@ def post_calibration_aggregated():
         jaccard_buffer_total = np.array([(item['modeled_jaccard_buffer_intersection'],item['modeled_jaccard_buffer_union']) for tripid, item in loss_dict.items()])
         jaccard_buffer_total = jaccard_buffer_total[:,0].sum() / jaccard_buffer_total[:,1].sum()
 
-        aggregated_loss[post_calibration_loss_fp.stem] = {
-            'jaccard_exact_mean': jaccard_exact_mean,
-            'jaccard_exact_total': jaccard_exact_total,
-            'jaccard_buffer_mean': jaccard_buffer_mean,
-            'jaccard_buffer_total': jaccard_buffer_total, 
-        }
-    aggregated_loss = pd.DataFrame.from_dict(aggregated_loss,orient='index').round(2)
+        calibration_params = get_calibration_name_parameters(calibration,user)
+
+        aggregated_loss.append({
+            **calibration_params, # contains the userid, calibration name and run number
+            'jaccard_exact_mean': round(jaccard_exact_mean,2),
+            'jaccard_exact_total': round(jaccard_exact_total,2),
+            'jaccard_buffer_mean': round(jaccard_buffer_mean,2),
+            'jaccard_buffer_total': round(jaccard_buffer_total,2)
+        })
+    aggregated_loss = pd.DataFrame.from_records(aggregated_loss)
     return aggregated_loss
 
 ########################################################################################
@@ -1102,39 +1207,37 @@ def full_impedance_calibration(
         print(f"{objective_function.__name__}: {x.fun}")
         print(x)
 
-    # assemble dictionary of the calibration results
-    calibration_result = {
-        'betas_tup': tuple({**item,'beta':x.x[idx].round(4)} for idx,item in enumerate(betas_tup)), # contains the betas
-        'set_to_zero': set_to_zero,
-        'set_to_inf': set_to_inf,
-        'settings': stochastic_optimization_settings, # contains the optimization settings
-        'objective_function': objective_function.__name__, # objective function used
-        'results': x, # stochastic optimization outputs
-        'trips_calibrated': set(full_set.keys()), # saves which trips were calibrated
-        'past_vals': args[0], # all of the past values/guesses
-        'runtime': pd.Timedelta(end-start),
-        'time': datetime.datetime.now()
-    }
-
-    calibration_result_fp, post_calibration_routing_fp = handle_directories(user,calibration_name)
-
-    with uniquify(calibration_result_fp).open('wb') as fh:
-        pickle.dump(calibration_result,fh)
+    if x.success:
     
-    # post process the model results now so they're ready for analysis and visualization
-    modeled_ods = post_calibration_routing(links,turns,turn_G,match_results_to_ods_w_year(full_set),base_impedance_col,set_to_zero,set_to_inf,calibration_result)
-    
-    with uniquify(post_calibration_routing_fp).open('wb') as fh:
-        pickle.dump(modeled_ods,fh)
+        # assemble dictionary of the calibration results
+        calibration_result = {
+            'betas_tup': tuple({**item,'beta':x.x[idx].round(4)} for idx,item in enumerate(betas_tup)), # contains the betas
+            'set_to_zero': set_to_zero,
+            'set_to_inf': set_to_inf,
+            'settings': stochastic_optimization_settings, # contains the optimization settings
+            'objective_function': objective_function.__name__, # objective function used
+            'results': x, # stochastic optimization outputs
+            'trips_calibrated': set(full_set.keys()), # saves which trips were calibrated
+            'past_vals': args[0], # all of the past values/guesses
+            'runtime': pd.Timedelta(end-start),
+            'time': datetime.datetime.now()
+        }
+
+        #NOTE consider keeping these in the same directory
+        calibration_result_fp, post_calibration_routing_fp = handle_directories(user,calibration_name)
+
+        with uniquify(calibration_result_fp).open('wb') as fh:
+            pickle.dump(calibration_result,fh)
         
-    return True
-    # if calibration_result['results'].success:
-
-
-    #     return True
-    # else:
-       
-    #     return False
+        # post process the model results now so they're ready for analysis and visualization
+        modeled_ods = post_calibration_routing(links,turns,turn_G,match_results_to_ods_w_year(full_set),base_impedance_col,set_to_zero,set_to_inf,calibration_result)
+        
+        with uniquify(post_calibration_routing_fp).open('wb') as fh:
+            pickle.dump(modeled_ods,fh)
+        
+        return True
+    else:
+        return False
 
 def handle_directories(user,calibration_name):
     # handle the directories
@@ -1158,7 +1261,7 @@ def handle_directories(user,calibration_name):
 # Helper function to unpack the dictionary and call example_function
 def run_calibration(task):
     task_dict, run_num, NUM_RUNS = task
-    task_name = f"{task_dict['calibration_name']} ({run_num+1}/{NUM_RUNS})"
+    task_name = f"{task_dict['calibration_name']} ({run_num+1}/{NUM_RUNS}) "
     success = full_impedance_calibration(**task_dict)
     return task_name, success
 

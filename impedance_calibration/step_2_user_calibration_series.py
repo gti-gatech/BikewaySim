@@ -57,16 +57,24 @@ if __name__ == '__main__':
     # Sort tasks by the run number, so that one full run completes first
     tasks = sorted(tasks,key=lambda x: x[1])
 
-    try:
-        with concurrent.futures.ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            for idx, result in enumerate(executor.map(stochastic_optimization.run_calibration, tasks)):
-                elapsed_time = print_elapsed_time(time.time()-start_time)    
-                if result[1]:
-                    print('Completed',result[0],'Remaining:',len(tasks)-idx+1,'Elapsed Time',elapsed_time)
-                else:
-                    print('Failed to complete',result[0],'Remaining:',len(tasks)-idx+1,'Elapsed Time',elapsed_time)
-    except KeyboardInterrupt:
-        print('\nExiting...')
+    for idx, task in enumerate(tasks):
+        result = stochastic_optimization.run_calibration(task)
+        elapsed_time = print_elapsed_time(time.time()-start_time)    
+        if result[1]:
+                    print('Completed',result[0],'Remaining:',len(tasks)-idx,'Elapsed Time',elapsed_time)
+        else:
+            print('Failed to complete',result[0],'Remaining:',len(tasks)-idx+1,'Elapsed Time',elapsed_time)
+
+    # try:
+    #     with concurrent.futures.ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
+    #         for idx, result in enumerate(executor.map(stochastic_optimization.run_calibration, tasks)):
+    #             elapsed_time = print_elapsed_time(time.time()-start_time)    
+    #             if result[1]:
+    #                 print('Completed',result[0],'Remaining:',len(tasks)-idx,'Elapsed Time',elapsed_time)
+    #             else:
+    #                 print('Failed to complete',result[0],'Remaining:',len(tasks)-idx+1,'Elapsed Time',elapsed_time)
+    # except KeyboardInterrupt:
+    #     print('\nExiting...')
 
     end_time = time.time()
     print('Took',round((end_time-start_time)/60**2,1),'hours')

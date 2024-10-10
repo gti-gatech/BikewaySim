@@ -2,7 +2,7 @@ import concurrent.futures
 
 from bikewaysim.paths import config
 from bikewaysim.impedance_calibration import stochastic_optimization
-from impedance_calibration.step_1_calibration_experiments import all_calibrations
+from step_1_calibration_experiments import all_calibrations
 
 if __name__ == '__main__':
     print([x['calibration_name'] for x in all_calibrations])
