@@ -1,12 +1,19 @@
 {
-    "code_directory":"C:/Users/tpassmore6/Documents/GitHub/BikewaySimDev",
-    "project_directory":"D:/PROJECTS/GDOT",
-    "studyarea":"D:/RAW/Study_Areas/itp.gpkg",
-    "geofabrik_fp":"D:/RAW/OSM/Geofabrik_GA_Extracts",
+    "project_fp":"D:/PROJECTS/GDOT_1",
+    "studyarea_fp":"D:/RAW/Study_Areas/itp.gpkg",
     "here_fp":"D:/RAW/HERE/Streets.shp",
     "abm_fp":"D:/RAW/ARC/rtp_amd6_2030_network.gdb",
     "projected_crs_epsg":"epsg:2240",
-    "geofabrik_year": "2023",
-    "usgs": "D:/RAW/USGS",
-    "maptilerapikey":"get_ur_own_at_maptiler.com"
+    "geofabrik_fp":"D:/RAW/OSM/Geofabrik_Extracts",
+    "geofabrik_year": "23",
+    "geofabrik_state": "georgia",
+    "usgs_fp": "D:/RAW/USGS",
+    "maptilerapikey":"",
+    "stadia_api":"",
+    "gdot_road_inventory_fp":"D:/RAW/GDOT/Road_Inventory_2021.gdb",
+    "gdot_traffic_fp":"D:/RAW/GDOT/Traffic_Data_2022.gdb",
+    "gdot_signals_fp":"D:/RAW/GDOT/traffic_signals.geojson",
+    "use_default_calibration": "True",
+    "mod_name": "coa",
+    "improvement_linkid_or_osmid": "osmid"
 }
