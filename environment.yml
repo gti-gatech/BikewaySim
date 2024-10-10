@@ -252,7 +252,6 @@ dependencies:
   - zstandard=0.23.0=py312h7606c53_1
   - zstd=1.5.6=h0ea2cb4_0
   - pip:
-      - bikewaysim==0.1.0
       - rustworkx==0.15.1
       - similaritymeasures==1.1.0
       - stochopy==2.3.0
