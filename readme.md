@@ -41,7 +41,7 @@ git clone --recurse-submodules -j8 https://github.com/reidx19/BikewayDev
 - Install conda to set up a Python virtual environment by following the [instructions](https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html)
 - Using conda's CLI, install the invluded environment named `environment.yml` and name it `bikewaysim`
 ```
-conda create env -n bikewaysim environment.yml
+conda env create -n bikewaysim environment.yml
 ```
 - Activate the 'bikewaysim' environment
 ```

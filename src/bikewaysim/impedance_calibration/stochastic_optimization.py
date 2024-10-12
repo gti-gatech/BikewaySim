@@ -62,20 +62,6 @@ def import_calibration_network(config):
     turn_G = modeling_turns.make_turn_graph(turns)
     return links, turns, length_dict, geo_dict, turn_G
 
-def rx_import_calibration_network(config):
-    '''
-    Backend function for loading calibration network files
-    '''
-    # import the calibration network
-    with (config['calibration_fp']/"calibration_network.pkl").open('rb') as fh:
-        links,turns = pickle.load(fh)
-    # make the length and geo dict
-    length_dict = dict(zip(links['linkid'],links.length))
-    geo_dict = dict(zip(links['linkid'],links.geometry))
-    # form turn graph
-    turn_G = rustworkx_routing_funcs.make_turn_graph(turns)
-    return links, turns, length_dict, geo_dict, turn_G
-
 ########################################################################################
 
 # Pre-Calibration Functions
@@ -91,13 +77,6 @@ def extract_bounds(betas):
     return [x.get('range') for x in betas]
 
 #NOTE still not sure if this would be better to with the coordinates instead incase something gets removed
-def match_results_to_ods(match_results):
-    #for the shortest path routing step, takes match_results and gets all unique od pairs
-    ods = [(item['origin_node'],item['destination_node']) for key, item in match_results.items()]
-    ods = np.unique(np.array(ods),axis=0)
-    ods = [tuple(row) for row in ods]
-    return ods
-
 def match_results_to_ods_w_year(match_results):
     #for the shortest path routing ste, except this returns the year
     ods = [(item['origin_node'],item['destination_node'],item['trip_start_time']) for key, item in match_results.items()]
@@ -126,7 +105,7 @@ def impedance_calibration(betas:np.array,
                           link_impedance_function,
                           base_impedance_col:str,
                           turn_impedance_function,
-                          links:pd.DataFrame,turns:pd.DataFrame,turn_G:nx.digraph,
+                          links:pd.DataFrame,turns:pd.DataFrame,turn_G:nx.digraph,added_nodes,
                           loss_function,
                           loss_function_kwargs,
                           print_results=True,
@@ -134,7 +113,8 @@ def impedance_calibration(betas:np.array,
                           batching=False
                           ):
 
-    # create a copy of links so the original isn't modified when it's re-added
+    # create a copy of links so the original isn't modified when the next 
+    # round of shortest paths is calculated
     links = links.copy()
     
     # if infra is off street (i.e., the link should no longer be traversable)
@@ -143,11 +123,11 @@ def impedance_calibration(betas:np.array,
     #set link costs accordingly
     #TODO think about how to make this work with the trip dates, thinking that it would loop through and update for each year
     # takes about 2 seconds to update the impedance factors
-    updated_edge_costs = impedance_update(betas,betas_tup,
+    updated_edge_costs = rustworkx_routing_funcs.impedance_update(betas,betas_tup,
                           link_impedance_function,
                           base_impedance_col,
                           turn_impedance_function,
-                          links,turns,turn_G)
+                          links,turns,turn_G,added_nodes)
 
     # make sure there are no negative edge weights
     if isinstance(updated_edge_costs,bool):
@@ -157,18 +137,15 @@ def impedance_calibration(betas:np.array,
             past_vals.append(list(betas)+[np.nan])
         return np.nan
 
-    # TODO print the iteration number and pop member
     if batching == True:
         batch_ods = random.sample(ods,k=5)
-        # sort (don't need to do this twice)
         batch_ods = sorted(batch_ods,key=lambda x: x[-1])[::-1]
         batch_match_results = {tripid:item for tripid, item in match_results.items() if (item['origin_node'],item['destination_node'],item['trip_start_time']) in set(batch_ods)}
     else:
         batch_ods = ods
         batch_match_results = match_results
 
-    #find leastdance path
-    #NOTE right now I use start/end node to reduce the number of repeated shortest path searches
+    #find least impedance path
     trips_years = set()
     results_dict = {}
     for start_node, end_node, year in batch_ods:
@@ -176,28 +153,22 @@ def impedance_calibration(betas:np.array,
             trips_years.add(year) # add it to the years already looked at
             if (links['year'] > year).any(): # only then should we run this
                 # print('Re-making network to year',year)
-                
                 # if infra is on street (i.e., the link is still traversable but the impedance doesn't apply)
-                links.loc[links['year']>year,set_to_zero] = 0 
-                links.loc[(links['year']>year) & (links.loc[:,set_to_inf]==1).any(axis=1),'link_cost_override'] = True
-                
+                links.loc[links['year'] > year,set_to_zero] = 0 
+                # if it's off-street then assign it a very high cost
+                links.loc[(links['year' ] > year) & (links.loc[:,set_to_inf]==1).any(axis=1),'link_cost_override'] = True
                 # re-run network update
-                impedance_update(betas,betas_tup,
+                rustworkx_routing_funcs.impedance_update(betas,betas_tup,
                         link_impedance_function,
                         base_impedance_col,
                         turn_impedance_function,
-                        links,turns,turn_G)
+                        links,turns,turn_G,added_nodes)
             
-                # # find the links with the new facilities and then find where they appear in the turns df
-                # links_w_new_facilities = set(links.loc[(links['year']>year) & (links[set_to_inf]==1).any(axis=1),'linkid'].tolist())
-                # turns_w_new_facilities = turns.loc[turns['source_linkid'].isin(links_w_new_facilities) | turns['target_linkid'].isin(links_w_new_facilities),['source_linkid','source_reverse_link','target_linkid','target_reverse_link']]
-                # turns_w_new_facilities = {tuple(x):1e9 for x in turns_w_new_facilities.values} # set an absurdly high cost
-                # updated_edge_costs.update(turns_w_new_facilities) # update the costs of those particular edges
-                # #NOTE, this won't adress the case in which the first link is the bike path
-                # nx.set_edge_attributes(turn_G,values=updated_edge_costs,name='weight')
+        path_length, shortest_path = rustworkx_routing_funcs.rx_shortest_paths([(start_node,end_node)],turn_G)
+        results_dict[(start_node,end_node)] = {'length':path_length[0],'edge_list':shortest_path[0]}
+        # results_dict[(start_node,end_node)] = impedance_path(turns,turn_G,links,start_node,end_node) old version
 
-        results_dict[(start_node,end_node)] = impedance_path(turns,turn_G,links,start_node,end_node)
-
+    # if no consideration for date
     # results_dict = {(start_node,end_node):impedance_path(turns,turn_G,links,start_node,end_node) for start_node, end_node in batch_ods}
 
     #calculate the objective function
@@ -211,15 +182,8 @@ def impedance_calibration(betas:np.array,
         print(list(betas.round(2))+[np.round(val_to_minimize,2)])
 
     #keep track of all the past betas used for visualization purposes
-    #NOTE remember that the rendering needs to consider the population part of pso (so show pop size routes and then the converge process)
-    #TODO actually implement this for disseration and because it would be cool in ppt to convey what is happening
     if track_calibration_results == True:
         past_vals.append(list(betas)+[val_to_minimize])
-        # TODO: create a progress bar using this
-        # if print_results:
-        #     worker = len(past_vals) % 3 + 1
-        #     iteration = len(past_vals)
-        #     print('Current Worker',worker,'Current Iteration',iteration)
 
     return val_to_minimize
 
@@ -743,39 +707,6 @@ cast into a different format for now.
 Link impedance is weighted by the length of the link, turns are just the impedance associated
 '''
 
-# def link_impedance_function_1(betas,beta_links,links,base_impedance_col):
-#     #prevent mutating the original links gdf
-#     links = links.copy()
-    
-#     #multiplier = np.zeros(links.shape[0])
-#     links["multiplier"] = 0
-    
-#     links.loc[links['link_type']=='road','multiplier'] = \
-#     (beta_links['lanes'] * links['lanes']) + \
-#     (beta_links['speed'] * links['speed']) + \
-#     (beta_links['bike_lane'] * links['bike_lane'])
-    
-#     links.loc[links['link_type']=='bike','multiplier'] = \
-#     (beta_links[])
-
-#     #grade
-#     links.loc[:,'multiplier'] = links.loc[:,'multiplier'] + (beta_links[''])
-
-
-#     if len(beta_links) > 0:
-#         #assumes that these effects are additive
-#         #TODO i think this can be done as a matrix product
-#         for key, item in beta_links.items():
-#             multiplier = multiplier + (betas[key] * links[item].values)
-    
-#         links['link_cost'] = links[base_impedance_col] * (1 + multiplier) #removeing the + 1 for now
-
-#     else:
-#         links['link_cost'] = links[base_impedance_col]
-
-#     return links
-
-
 def link_impedance_function(betas:np.array,betas_tup:tuple,links:pd.DataFrame,base_impedance_col:str):
     '''
     Default link impedance function. Assumes that link impedance factors are additive
@@ -835,7 +766,6 @@ def turn_impedance_function(betas:np.array,betas_tup:tuple,turns:pd.DataFrame):
 
 ########################################################################################
 
-
 def post_calibration_routing(links,turns,turn_G,full_ods,base_impedance_col,set_to_zero,set_to_inf,calibration_result):
     
     '''
@@ -849,12 +779,12 @@ def post_calibration_routing(links,turns,turn_G,full_ods,base_impedance_col,set_
     links = links.copy()
     
     # reset the link costs
-    back_to_base_impedance(base_impedance_col,links,turns,turn_G)
+    rustworkx_routing_funcs.back_to_base_impedance(base_impedance_col,links,turns,turn_G)
 
     # do initial impedance update
     # if infra is off street (i.e., the link should no longer be traversable)
     links['link_cost_override'] = False
-    impedance_update(betas,calibration_result['betas_tup'],
+    rustworkx_routing_funcs.impedance_update(betas,calibration_result['betas_tup'],
                         link_impedance_function,
                         base_impedance_col,
                         turn_impedance_function,
@@ -874,13 +804,14 @@ def post_calibration_routing(links,turns,turn_G,full_ods,base_impedance_col,set_
                 links.loc[(links['year']>year) & (links.loc[:,set_to_inf]==1).any(axis=1),'link_cost_override'] = True
                 
                 # re-run network update
-                impedance_update(betas,calibration_result['betas_tup'],
+                rustworkx_routing_funcs.impedance_update(betas,calibration_result['betas_tup'],
                         link_impedance_function,
                         base_impedance_col,
                         turn_impedance_function,
                         links,turns,turn_G)
-            
-        results_dict[(start_node,end_node)] = impedance_path(turns,turn_G,links,start_node,end_node)
+        path_length, shortest_path = rustworkx_routing_funcs.rx_shortest_paths([(start_node,end_node)],turn_G)
+        results_dict[(start_node,end_node)] = {'length':path_length[0],'edge_list':shortest_path[0]}
+        # results_dict[(start_node,end_node)] = impedance_path(turns,turn_G,links,start_node,end_node)
     
     return results_dict
 
@@ -1154,53 +1085,6 @@ def post_calibration_aggregated(user=False):
 
 ########################################################################################
 
-# change this to somehow import the impedance calibration arguements so we're not duplicating
-def unpacking_helper_function(
-        betas_tup:tuple,
-        set_to_zero:list,
-        set_to_inf:list,
-        ods:list,
-        match_results:dict,
-        link_impedance_function,
-        base_impedance_col:str,
-        turn_impedance_function,
-        links:pd.DataFrame,turns:pd.DataFrame,turn_G:nx.digraph,
-        loss_function,
-        loss_function_kwargs,
-        print_results=True,
-        track_calibration_results=True,
-        batching=False):
-    '''
-    Takes dict with keywords for impedance_calibration function and returns
-    a tuple for the optimization code.
-
-    Sets defults so you don't have to fill everything out
-
-    If you change the order or add a new parameter, you only need to modify it here
-    '''
-
-    args = (
-        [], # empty list for storing past calibration results
-        betas_tup, # tuple containing the impedance spec
-        set_to_zero, # if the trip year exceeds the link year set these attributes to zero
-        set_to_inf, # if the trip year exceeds the link year set the cost to 9e9
-        match_results_to_ods_w_year(ods), # list of OD network node pairs needed for shortest path routing
-        ods, # dict containing the origin/dest node and map matched edges
-        link_impedance_function, # link impedance function to use
-        base_impedance_col, # column with the base the base impedance in travel time or distance
-        turn_impedance_function, # turn impedance function to use
-        links,turns,turn_G, # network parts
-        loss_function, # loss function to use
-        loss_function_kwargs,#,'trace_dict':traces}, # keyword arguments for loss function
-        print_results, #whether to print the results of each iteration (useful when testing the calibration on its own)
-        True, #whether to store calibration results
-        batching # whether to batch results to help speed up computation time, if yes input the number to batch with
-    )
-
-    return args
-
-
-
 def full_impedance_calibration(
         calibration_name,
         betas_tup,
@@ -1208,7 +1092,7 @@ def full_impedance_calibration(
         set_to_zero=[],
         set_to_inf=[],
         batching=False,
-        stochastic_optimization_settings={'method':'pso','options':{'maxiter':100,'popsize':5}},
+        stochastic_optimization_settings={'method':'pso','options':{'maxiter':100,'popsize':25}},
         print_results = False, # default is false
         base_impedance_col='travel_time_min',
         user = None, # tuple with (userid,list_of_trips) (OPTIONAL)
@@ -1226,7 +1110,7 @@ def full_impedance_calibration(
     '''
         
     # import network
-    links, turns, length_dict, geo_dict, turn_G = import_calibration_network(config)
+    links, turns, length_dict, geo_dict, turn_G = rustworkx_routing_funcs.import_calibration_network(config)
 
     # import matched traces (all of them at first)
     with (config['calibration_fp']/'ready_for_calibration.pkl').open('rb') as fh:
@@ -1236,9 +1120,16 @@ def full_impedance_calibration(
     # subset = list(full_set.keys())[0:100]
     # full_set = {tripid:item for tripid, item in full_set.items() if tripid in subset}
 
-    # subset to a user's trips if user arguement is provided
+    # subset to a user's trips if user argument is provided
     if user is not None:
         full_set = {tripid:item for tripid, item in full_set.items() if tripid in user[1]}
+
+    # add virtual edges in advance
+    ods = match_results_to_ods_w_year(full_set)
+    starts = [x[0] for x in ods]
+    ends = [x[1] for x in ods]
+    link_costs = links[base_impedance_col]
+    added_nodes = rustworkx_routing_funcs.add_virtual_edges(starts,ends,link_costs,turn_G)
 
     # TODO clean up how this is done
     # NOTE need a tuple for minimize but this could be replaced with a function that converts a dict to tuple
@@ -1247,12 +1138,12 @@ def full_impedance_calibration(
         betas_tup, # tuple containing the impedance spec
         set_to_zero, # if the trip year exceeds the link year set these attributes to zero
         set_to_inf, # if the trip year exceeds the link year set the cost to 9e9
-        match_results_to_ods_w_year(full_set), # list of OD network node pairs needed for shortest path routing
+        ods, # list of OD network node pairs needed for shortest path routing 
         full_set, # dict containing the origin/dest node and map matched edges
         link_impedance_function, # link impedance function to use
         base_impedance_col, # column with the base the base impedance in travel time or distance
         turn_impedance_function, # turn impedance function to use
-        links,turns,turn_G, # network parts
+        links,turns,turn_G, added_nodes, # network parts
         objective_function, # loss function to use
         {'length_dict':length_dict,'geo_dict':geo_dict},#,'trace_dict':traces}, # keyword arguments for loss function
         print_results, #whether to print the results of each iteration (useful when testing the calibration on its own)
@@ -2163,7 +2054,7 @@ def uniquify(path):
         #     modeled_edges = links.loc[modeled_edges]
 
         #     #caluclate absolute difference
-        #     difference_ft = (modeled_edges.length.sum() - chosen_edges.legnth.sum()).abs()
+        #     difference_ft = (modeled_edges.length.sum() - chosen_edges.length.sum()).abs()
 
         #     #buffer edges and dissolve
         #     buffer_ft = 500
