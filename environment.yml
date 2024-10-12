@@ -100,6 +100,7 @@ dependencies:
   - libaec=1.1.3=h63175ca_0
   - libarchive=3.7.4=haf234dc_0
   - libblas=3.9.0=24_win64_mkl
+  - libboost=1.84.0=h444863b_6
   - libbrotlicommon=1.1.0=h2466b09_2
   - libbrotlidec=1.1.0=h2466b09_2
   - libbrotlienc=1.1.0=h2466b09_2
@@ -172,6 +173,7 @@ dependencies:
   - numpy=1.26.4=py312h8753938_0
   - openjpeg=2.5.2=h3d672ee_0
   - openssl=3.3.2=h2466b09_0
+  - osmium-tool=1.16.0=h015118d_3
   - osmnx=1.9.4=pyhd8ed1ab_0
   - packaging=24.1=pyhd8ed1ab_0
   - pandas=2.2.3=py312h72972c8_1

@@ -31,31 +31,36 @@ if __name__ == '__main__':
     
     start_time = time.time()
     
-    NUM_RUNS = 100 # Number of times to run each calibration
-    MAX_WORKERS = 10
+    NUM_RUNS = 2#100 # Number of times to run each calibration
+    MAX_WORKERS = 2#12 # For my machine this takes about ~70% CPU and ~80% Memory
     
     print('Using these calibration settings:')
     print([x['calibration_name'] for x in all_calibrations])
     print('Running each calibration',NUM_RUNS,'times')
 
-    # NOTE COMMENT OUT LINE 19-24 TO DO ALL TRIPS CALIBRATION
-    # Import users
-    with (config['calibration_fp']/'ready_for_calibration_users.pkl').open('rb') as fh:
-        ready_for_calibration_users = pickle.load(fh)
+    # # NOTE COMMENT OUT LINE 19-24 TO DO ALL TRIPS CALIBRATION
+    # # Import users
+    # with (config['calibration_fp']/'ready_for_calibration_users.pkl').open('rb') as fh:
+    #     ready_for_calibration_users = pickle.load(fh)
 
-    # if you want to only do a few users
-    subset_users = [21]
-    ready_for_calibration_users = [x for x in ready_for_calibration_users if x[0] in subset_users]
+    # # # if you want to only do a few users
+    # subset_users = [21]
+    # ready_for_calibration_users = [x for x in ready_for_calibration_users if x[0] in subset_users]
 
-    # Add users to the calibration list
-    new_all_calibrations = []
-    all_calibrations = [{**calibration_dict,**{'user':user}} for user, calibration_dict in itertools.product(ready_for_calibration_users,all_calibrations)]
+    # # Add users to the calibration list
+    # new_all_calibrations = []
+    # all_calibrations = [{**calibration_dict,**{'user':user}} for user, calibration_dict in itertools.product(ready_for_calibration_users,all_calibrations)]
     
     # Create a list of (script, run_num) pairs for NUM_RUNS
     tasks = [(calibration_dict, run_num, NUM_RUNS) for calibration_dict in all_calibrations for run_num in range(NUM_RUNS)]
 
     # Sort tasks by the run number, so that one full run completes first
     tasks = sorted(tasks,key=lambda x: x[1])
+
+    # what's not ideal is that the calibration runs are not learing from past results 
+    '''
+    Look at the number of iterations vs overlap to see if it's pretty clear on whether were trapped at a local minimum or not
+    '''
 
     try:
         with concurrent.futures.ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
