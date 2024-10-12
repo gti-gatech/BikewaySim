@@ -11,6 +11,8 @@ config = json.load((root / 'config.json').open('rb'))
 for key, item in config.items():
     if "_fp" in key:
         config[key] = Path(item)
+        if (config[key].exists() == False) & (config[key].suffix == ''):
+            config[key].mkdir(parents=True)
 
 # bikewaysim data directories
 bicycle_facilities_fp = config['project_fp'] / 'Bicycle_Facilities'

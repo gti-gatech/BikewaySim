@@ -34,12 +34,12 @@ When paired with BikewaySim's bicycle facility assessment framework (Figure 2), 
 1. Using results to generate several metrics for assessing the impacts of planned cycling facilities
 
 ## Install instructions:
+- Asssumes that you have [conda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html) and [git](https://git-scm.com/downloads) installed for your system already
 - Clone the repository (and the transit-routing submodule) into your desired directory
 ```
 git clone --recurse-submodules -j8 https://github.com/reidx19/BikewayDev 
 ```
-- Install conda to set up a Python virtual environment by following the [instructions](https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html)
-- Using conda's CLI, install the invluded environment named `environment.yml` and name it `bikewaysim`
+- Create a new conda environment named `bikewaysim` using the `environment.yml` file (make sure that you're in the directory with the .yml file)
 ```
 conda env create -n bikewaysim environment.yml
 ```
@@ -47,12 +47,12 @@ conda env create -n bikewaysim environment.yml
 ```
 conda activate bikewaysim
 ```
-- Navigate to the `BikewaySim/src` folder on conda CLI and install the development package `bikewaysim`
+- Change into the `BikewaySim/src` folder on command line and install the development package `bikewaysim`
 ```
 pip install -e .
 ```
 - Great! Everything should be installed!
-- Most of the code is excuted through Jupyter Notebooks which can be opened/run/edited through VS Code or Jupyter Notebook, just make sure your conda environment is activated.
+- Most of the code is excuted through Jupyter Notebooks which can be opened/run/edited through [VS Code](https://code.visualstudio.com/) or [Jupyter Notebook](https://anaconda.org/anaconda/jupyter), just make sure the `bikewaysim` environment is activated.
 
 ## How to Run
 1. Modify the [config.json](config.json) file to define the project directory and various settings (e.g., desired projected coordinate system, supplemental data directories, etc.).
