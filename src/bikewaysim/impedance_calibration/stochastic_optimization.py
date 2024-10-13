@@ -105,7 +105,7 @@ def impedance_calibration(betas:np.array,
                           link_impedance_function,
                           base_impedance_col:str,
                           turn_impedance_function,
-                          links:pd.DataFrame,turns:pd.DataFrame,turn_G:nx.digraph,added_nodes,
+                          links:pd.DataFrame,turns:pd.DataFrame,turn_G:nx.digraph,
                           loss_function,
                           loss_function_kwargs,
                           print_results=True,
@@ -127,7 +127,7 @@ def impedance_calibration(betas:np.array,
                           link_impedance_function,
                           base_impedance_col,
                           turn_impedance_function,
-                          links,turns,turn_G,added_nodes)
+                          links,turns,turn_G)
 
     # make sure there are no negative edge weights
     if isinstance(updated_edge_costs,bool):
@@ -145,24 +145,72 @@ def impedance_calibration(betas:np.array,
         batch_ods = ods
         batch_match_results = match_results
 
+    starts = [x[0] for x in batch_ods]
+    ends = [x[1] for x in batch_ods]
+    years = sorted(list(set([x[2] for x in batch_ods])))[::-1]
+
+    # create the networks by year
+    t1 = time.time()
+    year_networks = {}
+    for year in years:
+        # create a copy of the network to modify
+        turn_G_copy = turn_G.copy()
+        
+        # if infra is on street (i.e., the link is still traversable but the impedance doesn't apply)
+        links.loc[links['year'] > year,set_to_zero] = 0 
+        # if it's off-street then assign it a very high cost
+        links.loc[(links['year'] > year) & (links.loc[:,set_to_inf]==1).any(axis=1),'link_cost_override'] = True
+
+        # run network update
+        rustworkx_routing_funcs.impedance_update(betas,betas_tup,
+                link_impedance_function,
+                base_impedance_col,
+                turn_impedance_function,
+                links,turns,turn_G_copy)
+        
+        # re-add virtual links
+        rustworkx_routing_funcs.add_virtual_edges(starts,ends,links,turns,turn_G_copy)
+        
+        # add the network to the dict
+        year_networks[year] = turn_G_copy
+
+    added_nodes = rustworkx_routing_funcs.add_virtual_edges(starts,ends,links,turns,turn_G)
+    print((time.time()-t1)/60)
+    t1 = time.time()
+    path_lengths, shortest_paths = rustworkx_routing_funcs.rx_shortest_paths_year(batch_ods,turn_G,year_networks)
+    print((time.time()-t1)/60)
+    
+    results_dict = {(od[0],od[1]):pd.DataFrame(shortest_path,columns=['linkid','reverse_link']) for shortest_path, od in zip(shortest_paths,batch_ods)}
+
+    rustworkx_routing_funcs.remove_virtual_links(added_nodes,turn_G)
+
+    #TODO continue here
+
     #find least impedance path
     trips_years = set()
     results_dict = {}
-    for start_node, end_node, year in batch_ods:
+    for start_node, end_node, year in tqdm(batch_ods):
         if year not in trips_years:
-            trips_years.add(year) # add it to the years already looked at
-            if (links['year'] > year).any(): # only then should we run this
-                # print('Re-making network to year',year)
+            trips_years.add(year) #  it to the years already looked at
+            if (links['year'] > year).any(): 
+                rustworkx_routing_funcs.remove_virtual_links(added_nodes,turn_G)
+                
                 # if infra is on street (i.e., the link is still traversable but the impedance doesn't apply)
                 links.loc[links['year'] > year,set_to_zero] = 0 
                 # if it's off-street then assign it a very high cost
-                links.loc[(links['year' ] > year) & (links.loc[:,set_to_inf]==1).any(axis=1),'link_cost_override'] = True
+                links.loc[(links['year'] > year) & (links.loc[:,set_to_inf]==1).any(axis=1),'link_cost_override'] = True
+                # set these years to nan
+                links.loc[(links['year'] > year),'year'] = np.nan
+
                 # re-run network update
                 rustworkx_routing_funcs.impedance_update(betas,betas_tup,
                         link_impedance_function,
                         base_impedance_col,
                         turn_impedance_function,
-                        links,turns,turn_G,added_nodes)
+                        links,turns,turn_G)
+                
+                # re-add virtual links
+                added_nodes = rustworkx_routing_funcs.add_virtual_edges(starts,ends,links,turns,turn_G)
             
         path_length, shortest_path = rustworkx_routing_funcs.rx_shortest_paths([(start_node,end_node)],turn_G)
         results_dict[(start_node,end_node)] = {'length':path_length[0],'edge_list':shortest_path[0]}
@@ -1124,13 +1172,6 @@ def full_impedance_calibration(
     if user is not None:
         full_set = {tripid:item for tripid, item in full_set.items() if tripid in user[1]}
 
-    # add virtual edges in advance
-    ods = match_results_to_ods_w_year(full_set)
-    starts = [x[0] for x in ods]
-    ends = [x[1] for x in ods]
-    link_costs = links[base_impedance_col]
-    added_nodes = rustworkx_routing_funcs.add_virtual_edges(starts,ends,link_costs,turn_G)
-
     # TODO clean up how this is done
     # NOTE need a tuple for minimize but this could be replaced with a function that converts a dict to tuple
     args = (
@@ -1138,12 +1179,12 @@ def full_impedance_calibration(
         betas_tup, # tuple containing the impedance spec
         set_to_zero, # if the trip year exceeds the link year set these attributes to zero
         set_to_inf, # if the trip year exceeds the link year set the cost to 9e9
-        ods, # list of OD network node pairs needed for shortest path routing 
+        match_results_to_ods_w_year(full_set), # list of OD network node pairs needed for shortest path routing 
         full_set, # dict containing the origin/dest node and map matched edges
         link_impedance_function, # link impedance function to use
         base_impedance_col, # column with the base the base impedance in travel time or distance
         turn_impedance_function, # turn impedance function to use
-        links,turns,turn_G, added_nodes, # network parts
+        links,turns,turn_G, # network parts
         objective_function, # loss function to use
         {'length_dict':length_dict,'geo_dict':geo_dict},#,'trace_dict':traces}, # keyword arguments for loss function
         print_results, #whether to print the results of each iteration (useful when testing the calibration on its own)

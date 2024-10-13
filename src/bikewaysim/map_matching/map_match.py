@@ -715,25 +715,6 @@ def visualize_failed_match(tripid,coords_dict,edges,config):
 
     #TODO add in the legend with trip info and then we're golden
 
-def mapmatch_results(match_dict,cutoff):
-    '''
-    Prints the map match results and returns lists of failed and incomplete matches
-    '''
-
-    #get a series with the match ratios
-    match_ratios = {tripid:item['match_ratio'] for tripid, item in match_dict.items() if isinstance(item,str)==False}
-    match_ratios = pd.Series(match_ratios)
-    
-    # get counts and print them
-    above_threshold = match_ratios[match_ratios > cutoff].index.tolist()
-    below_threshold = match_ratios[match_ratios <= cutoff].index.tolist()
-    failed_matches = [tripid for tripid, item in match_dict.items() if isinstance(item,str)==True]
-
-    print(len(above_threshold),'/',len(match_dict),f"({round(len(above_threshold)/len(match_dict)*100)}%) successful matches")
-    print(len(below_threshold),'/',len(match_dict),f"({round(len(below_threshold)/len(match_dict)*100)}%) partial matches")
-    print(len(failed_matches),'/',len(match_dict),f"({round(len(failed_matches)/len(match_dict)*100)}%) failed matches")
-
-    return above_threshold, below_threshold, failed_matches, match_ratios
 
 from shapely.ops import LineString
 def retrieve_geos_from_trace(x,y,coords_dict,latlon=False):
