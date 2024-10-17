@@ -14,7 +14,7 @@ from datetime import timedelta
 import ast
 import shapely
 import sys
-import branca
+
 import random
 import similaritymeasures
 
@@ -150,7 +150,6 @@ def impedance_calibration(betas:np.array,
     years = sorted(list(set([x[2] for x in batch_ods])))[::-1]
 
     # create the networks by year
-    t1 = time.time()
     year_networks = {}
     for year in years:
         # create a copy of the network to modify
@@ -175,45 +174,43 @@ def impedance_calibration(betas:np.array,
         year_networks[year] = turn_G_copy
 
     added_nodes = rustworkx_routing_funcs.add_virtual_edges(starts,ends,links,turns,turn_G)
-    print((time.time()-t1)/60)
-    t1 = time.time()
-    path_lengths, shortest_paths = rustworkx_routing_funcs.rx_shortest_paths_year(batch_ods,turn_G,year_networks)
-    print((time.time()-t1)/60)
     
-    results_dict = {(od[0],od[1]):pd.DataFrame(shortest_path,columns=['linkid','reverse_link']) for shortest_path, od in zip(shortest_paths,batch_ods)}
+    path_lengths, shortest_paths = rustworkx_routing_funcs.rx_shortest_paths_year(batch_ods,turn_G,year_networks)
+    
+    results_dict = {(od[0],od[1]):{'length':path_length,'edge_list':shortest_path} for path_length, shortest_path, od in zip(path_lengths,shortest_paths,batch_ods)}
 
     rustworkx_routing_funcs.remove_virtual_links(added_nodes,turn_G)
 
     #TODO continue here
 
-    #find least impedance path
-    trips_years = set()
-    results_dict = {}
-    for start_node, end_node, year in tqdm(batch_ods):
-        if year not in trips_years:
-            trips_years.add(year) #  it to the years already looked at
-            if (links['year'] > year).any(): 
-                rustworkx_routing_funcs.remove_virtual_links(added_nodes,turn_G)
+    # #find least impedance path
+    # trips_years = set()
+    # results_dict = {}
+    # for start_node, end_node, year in tqdm(batch_ods):
+    #     if year not in trips_years:
+    #         trips_years.add(year) #  it to the years already looked at
+    #         if (links['year'] > year).any(): 
+    #             rustworkx_routing_funcs.remove_virtual_links(added_nodes,turn_G)
                 
-                # if infra is on street (i.e., the link is still traversable but the impedance doesn't apply)
-                links.loc[links['year'] > year,set_to_zero] = 0 
-                # if it's off-street then assign it a very high cost
-                links.loc[(links['year'] > year) & (links.loc[:,set_to_inf]==1).any(axis=1),'link_cost_override'] = True
-                # set these years to nan
-                links.loc[(links['year'] > year),'year'] = np.nan
+    #             # if infra is on street (i.e., the link is still traversable but the impedance doesn't apply)
+    #             links.loc[links['year'] > year,set_to_zero] = 0 
+    #             # if it's off-street then assign it a very high cost
+    #             links.loc[(links['year'] > year) & (links.loc[:,set_to_inf]==1).any(axis=1),'link_cost_override'] = True
+    #             # set these years to nan
+    #             links.loc[(links['year'] > year),'year'] = np.nan
 
-                # re-run network update
-                rustworkx_routing_funcs.impedance_update(betas,betas_tup,
-                        link_impedance_function,
-                        base_impedance_col,
-                        turn_impedance_function,
-                        links,turns,turn_G)
+    #             # re-run network update
+    #             rustworkx_routing_funcs.impedance_update(betas,betas_tup,
+    #                     link_impedance_function,
+    #                     base_impedance_col,
+    #                     turn_impedance_function,
+    #                     links,turns,turn_G)
                 
-                # re-add virtual links
-                added_nodes = rustworkx_routing_funcs.add_virtual_edges(starts,ends,links,turns,turn_G)
+    #             # re-add virtual links
+    #             added_nodes = rustworkx_routing_funcs.add_virtual_edges(starts,ends,links,turns,turn_G)
             
-        path_length, shortest_path = rustworkx_routing_funcs.rx_shortest_paths([(start_node,end_node)],turn_G)
-        results_dict[(start_node,end_node)] = {'length':path_length[0],'edge_list':shortest_path[0]}
+    #     path_length, shortest_path = rustworkx_routing_funcs.rx_shortest_paths([(start_node,end_node)],turn_G)
+    #     results_dict[(start_node,end_node)] = {'length':path_length[0],'edge_list':shortest_path[0]}
         # results_dict[(start_node,end_node)] = impedance_path(turns,turn_G,links,start_node,end_node) old version
 
     # if no consideration for date
@@ -454,6 +451,7 @@ def jaccard_buffer_mean(results_dict,match_results,geo_dict):
     val_to_minimize = -1 * np.sum(loss_values[:,0] / loss_values[:,1]) / loss_values.shape[0]
 
     return val_to_minimize
+
 
 # def general_objective_function(loss_function,
 #                                loss_function_kwargs:dict,
@@ -838,29 +836,66 @@ def post_calibration_routing(links,turns,turn_G,full_ods,base_impedance_col,set_
                         turn_impedance_function,
                         links,turns,turn_G)
 
-    trips_years = set()
-    results_dict = {}
-    for start_node, end_node, year in full_ods:
-        if year not in trips_years:
-            # print('Remaking network for',year)
-            trips_years.add(year) # add it to the years already looked at
-            if (links['year'] > year).any(): # only then should we run this
-                # print('Re-making network to year',year)
+    # trips_years = set()
+    # results_dict = {}
+    # for start_node, end_node, year in full_ods:
+    #     if year not in trips_years:
+    #         # print('Remaking network for',year)
+    #         trips_years.add(year) # add it to the years already looked at
+    #         if (links['year'] > year).any(): # only then should we run this
+    #             # print('Re-making network to year',year)
                 
-                # if infra is on street (i.e., the link is still traversable but the impedance doesn't apply)
-                links.loc[links['year']>year,set_to_zero] = 0 
-                links.loc[(links['year']>year) & (links.loc[:,set_to_inf]==1).any(axis=1),'link_cost_override'] = True
+    #             # if infra is on street (i.e., the link is still traversable but the impedance doesn't apply)
+    #             links.loc[links['year']>year,set_to_zero] = 0 
+    #             links.loc[(links['year']>year) & (links.loc[:,set_to_inf]==1).any(axis=1),'link_cost_override'] = True
                 
-                # re-run network update
-                rustworkx_routing_funcs.impedance_update(betas,calibration_result['betas_tup'],
-                        link_impedance_function,
-                        base_impedance_col,
-                        turn_impedance_function,
-                        links,turns,turn_G)
-        path_length, shortest_path = rustworkx_routing_funcs.rx_shortest_paths([(start_node,end_node)],turn_G)
-        results_dict[(start_node,end_node)] = {'length':path_length[0],'edge_list':shortest_path[0]}
-        # results_dict[(start_node,end_node)] = impedance_path(turns,turn_G,links,start_node,end_node)
+    #             # re-run network update
+    #             rustworkx_routing_funcs.impedance_update(betas,calibration_result['betas_tup'],
+    #                     link_impedance_function,
+    #                     base_impedance_col,
+    #                     turn_impedance_function,
+    #                     links,turns,turn_G)
+    #     path_length, shortest_path = rustworkx_routing_funcs.rx_shortest_paths([(start_node,end_node)],turn_G)
+    #     results_dict[(start_node,end_node)] = {'length':path_length[0],'edge_list':shortest_path[0]}
+    #     # results_dict[(start_node,end_node)] = impedance_path(turns,turn_G,links,start_node,end_node)
+
+    # create the networks by year
     
+    starts = [x[0] for x in full_ods]
+    ends = [x[1] for x in full_ods]
+    years = sorted(list(set([x[2] for x in full_ods])))[::-1]
+
+    year_networks = {}
+    for year in years:
+        # create a copy of the network to modify
+        turn_G_copy = turn_G.copy()
+        
+        # if infra is on street (i.e., the link is still traversable but the impedance doesn't apply)
+        links.loc[links['year'] > year,set_to_zero] = 0 
+        # if it's off-street then assign it a very high cost
+        links.loc[(links['year'] > year) & (links.loc[:,set_to_inf]==1).any(axis=1),'link_cost_override'] = True
+
+        # run network update
+        rustworkx_routing_funcs.impedance_update(betas,calibration_result['betas_tup'],
+                link_impedance_function,
+                base_impedance_col,
+                turn_impedance_function,
+                links,turns,turn_G_copy)
+        
+        # re-add virtual links
+        rustworkx_routing_funcs.add_virtual_edges(starts,ends,links,turns,turn_G_copy)
+        
+        # add the network to the dict
+        year_networks[year] = turn_G_copy
+
+    added_nodes = rustworkx_routing_funcs.add_virtual_edges(starts,ends,links,turns,turn_G)
+    
+    path_lengths, shortest_paths = rustworkx_routing_funcs.rx_shortest_paths_year(full_ods,turn_G,year_networks)
+    
+    results_dict = {(od[0],od[1]):{'length':path_length,'edge_list':shortest_path} for path_length, shortest_path, od in zip(path_lengths,shortest_paths,full_ods)}
+
+    rustworkx_routing_funcs.remove_virtual_links(added_nodes,turn_G)
+
     return results_dict
 
 def shortest_loss():
@@ -960,13 +995,14 @@ def post_calibration_loss(user=False):
         full_set_all = pickle.load(fh)
 
     for calibration in tqdm(calibrations):
-        
+        # load the calibration result (has the estimated betas)
         with (calibration_results_dir / f"{calibration}.pkl").open('rb') as fh:
             calibration_result = pickle.load(fh)
 
-        # subset to the trips used for calibration
+        # subset to the trips used for calibration (in case there was some sort of subsetting)
         full_set = {tripid:item for tripid, item in full_set_all.items() if tripid in calibration_result['trips_calibrated']}
         
+        # load the post calibration results (includes the impedance path taken for each trip)
         with (post_calibration_routing_dir / f"{calibration}.pkl").open('rb') as fh:
             results_dict = pickle.load(fh)
         
@@ -975,8 +1011,15 @@ def post_calibration_loss(user=False):
         for tripid, item in full_set.items(): # make sure you import this
             chosen = item['matched_edges'].values
             shortest = item['shortest_edges'].values
+            
+            # NOTE one limitation of this is that if the origin node and destination node change at any point then
+            # than this step will break
             od = (item['origin_node'],item['destination_node'])
-            modeled = results_dict[od]['edge_list']
+            modeled = results_dict.get(od)
+            if modeled is None:
+                print(f"No shortest path found for {tripid} on calibration {calibration}")
+                continue
+            modeled = modeled['edge_list']
         
             #compute the loss values (store the intermediates too so total vs mean methods can be compared)
             modeled_jaccard_exact_intersection, modeled_jaccard_exact_union =  jaccard_exact(chosen,modeled,length_dict)
@@ -1026,24 +1069,45 @@ def post_calibration_disaggregate(user):
     
     calibration_results_dir, post_calibration_routing_dir, post_calibration_loss_dir, calibrations = file_check(user)
     
-    all_loss_stats = defaultdict(dict)
-    for calibration in tqdm(calibrations):
-        with (post_calibration_loss_dir / f"{calibration}.pkl").open('rb') as fh:
-            loss_dict = pickle.load(fh)
-        #remove the edges
-        for tripid, item in loss_dict.items():
-            #remove certain fields
-            for key in list(item.keys()):
-                if ('_intersection' in key) | ('_union' in key) | (key=='modeled_edges'):
-                    item.pop(key)
-            renamed = {calibration+'_'+key.removeprefix('modeled_'):sub_item for key, sub_item in item.items()}
-            all_loss_stats[tripid].update(renamed)
-    all_loss_stats = pd.DataFrame.from_dict(all_loss_stats,orient='index')
+    if user==False:
+        all_loss_stats = defaultdict(dict)
+        for calibration in tqdm(calibrations):
+            with (post_calibration_loss_dir / f"{calibration}.pkl").open('rb') as fh:
+                loss_dict = pickle.load(fh)
+            output = get_calibration_name_parameters(calibration,user)
+            #remove the edges
+            for tripid, item in loss_dict.items():
+                #remove certain fields
+                for key in list(item.keys()):
+                    if ('_intersection' in key) | ('_union' in key) | (key=='modeled_edges'):
+                        item.pop(key)
+                renamed = {(output['calibration'],output['run_number'],key.removeprefix('modeled_')):sub_item for key, sub_item in item.items()}
+                all_loss_stats[tripid].update(renamed)
+        all_loss_stats = pd.DataFrame.from_dict(all_loss_stats,orient='index')
+        all_loss_stats.index.name = 'tripid'
+        all_loss_stats.columns = pd.MultiIndex.from_tuples(all_loss_stats.columns, names=["calibration","run","loss"])
+    else:
+        all_loss_stats = defaultdict(dict)
+        for calibration in tqdm(calibrations):
+            with (post_calibration_loss_dir / f"{calibration}.pkl").open('rb') as fh:
+                loss_dict = pickle.load(fh)
+            output = get_calibration_name_parameters(calibration,user)
+            #remove the edges
+            for tripid, item in loss_dict.items():
+                #remove certain fields
+                for key in list(item.keys()):
+                    if ('_intersection' in key) | ('_union' in key) | (key=='modeled_edges'):
+                        item.pop(key)
+                renamed = {(output['userid'],output['calibration'],output['run_number'],key.removeprefix('modeled_')):sub_item for key, sub_item in item.items()}
+                all_loss_stats[tripid].update(renamed)
+        all_loss_stats = pd.DataFrame.from_dict(all_loss_stats,orient='index')
+        all_loss_stats.index.name = 'tripid'
+        all_loss_stats.columns = pd.MultiIndex.from_tuples(all_loss_stats.columns, names=["subsetid","calibration","run","loss"])
     return all_loss_stats
 
 def shortest_aggregated(user=False):
     '''
-    Gets aggregated shortest path stats so they can be appened to the post calibration one
+    Gets aggregated shortest path stats so they can be appened to the post calibration results
     '''
     # has all the shortest stats
     with (config['calibration_fp']/'ready_for_calibration_stats.pkl').open('rb') as fh:
@@ -1091,7 +1155,6 @@ def shortest_aggregated(user=False):
     aggregated_loss = pd.DataFrame.from_records(aggregated_loss)
     return aggregated_loss
 
-    
 def post_calibration_aggregated(user=False):
     '''
     Calculates aggregated stats for all of the calibration results.
@@ -1143,7 +1206,7 @@ def full_impedance_calibration(
         stochastic_optimization_settings={'method':'pso','options':{'maxiter':100,'popsize':25}},
         print_results = False, # default is false
         base_impedance_col='travel_time_min',
-        user = None, # tuple with (userid,list_of_trips) (OPTIONAL)
+        user = None, # tuple with (userid,list_of_trips) or use to subset data (OPTIONAL)
         force_save = False
         ):
     
@@ -1164,7 +1227,7 @@ def full_impedance_calibration(
     with (config['calibration_fp']/'ready_for_calibration.pkl').open('rb') as fh:
         full_set = pickle.load(fh)
 
-    # DEBUGGING
+    # # DEBUGGING
     # subset = list(full_set.keys())[0:100]
     # full_set = {tripid:item for tripid, item in full_set.items() if tripid in subset}
 
@@ -1207,35 +1270,38 @@ def full_impedance_calibration(
         print(f"{objective_function.__name__}: {x.fun}")
         print(x)
 
-    if x.success | force_save:
+    # I should be saving the result regardless for posterity
+    # if x.success | force_save:
     
-        # assemble dictionary of the calibration results
-        calibration_result = {
-            'betas_tup': tuple({**item,'beta':x.x[idx].round(4)} for idx,item in enumerate(betas_tup)), # contains the betas
-            'set_to_zero': set_to_zero,
-            'set_to_inf': set_to_inf,
-            'settings': stochastic_optimization_settings, # contains the optimization settings
-            'objective_function': objective_function.__name__, # objective function used
-            'results': x, # stochastic optimization outputs
-            'trips_calibrated': set(full_set.keys()), # saves which trips were calibrated
-            'past_vals': args[0], # all of the past values/guesses #BUG does not appear to work correcctly
-            'runtime': datetime.timedelta(seconds= start - end),
-            'time': datetime.datetime.now()
-        }
+    # assemble dictionary of the calibration results
+    calibration_result = {
+        'betas_tup': tuple({**item,'beta':x.x[idx].round(4)} for idx,item in enumerate(betas_tup)), # contains the betas
+        'set_to_zero': set_to_zero,
+        'set_to_inf': set_to_inf,
+        'settings': stochastic_optimization_settings, # contains the optimization settings
+        'objective_function': objective_function.__name__, # objective function used
+        'results': x, # stochastic optimization outputs
+        'trips_calibrated': set(full_set.keys()), # saves which trips were calibrated
+        'past_vals': args[0], # all of the past values/guesses #BUG does not appear to work correcctly
+        'runtime': datetime.timedelta(seconds= start - end),
+        'time': datetime.datetime.now()
+    }
 
-        #NOTE consider keeping these in the same directory
-        calibration_result_fp, post_calibration_routing_fp = handle_directories(user,calibration_name)
+    #NOTE consider keeping these in the same directory
+    calibration_result_fp, post_calibration_routing_fp = handle_directories(user,calibration_name)
 
-        with uniquify(calibration_result_fp).open('wb') as fh:
-            pickle.dump(calibration_result,fh)
-        
-        #TODO have a try except for when force save returns negative link values?
-        # post process the model results now so they're ready for analysis and visualization
+    with uniquify(calibration_result_fp).open('wb') as fh:
+        pickle.dump(calibration_result,fh)
+    
+    #TODO have a try except for when force save returns negative link values?
+    # post process the model results now so they're ready for analysis and visualization
+    if x.success:
         modeled_ods = post_calibration_routing(links,turns,turn_G,match_results_to_ods_w_year(full_set),base_impedance_col,set_to_zero,set_to_inf,calibration_result)
         
         with uniquify(post_calibration_routing_fp).open('wb') as fh:
             pickle.dump(modeled_ods,fh)
         
+    if x.success:
         return True
     else:
         return False
@@ -1266,336 +1332,6 @@ def run_calibration(task):
     success = full_impedance_calibration(**task_dict)
     return task_name, success
 
-########################################################################################
-
-# Visualization and QAQC Tools
-
-########################################################################################
-
-import folium
-import geopandas as gpd
-from folium.plugins import MarkerCluster, PolyLineTextPath
-from folium.map import FeatureGroup
-from shapely.ops import Point, MultiLineString
-
-def construct_line_dict(keys,result_dict,geo_dict):
-    """
-    Function for creating line dictionary for visualization functions that assumes
-    a dictionary with keys corresponding to a dataframe of the link sequence
-    """
-    line_dict = {}
-    for key in keys:
-        if key == 'matched_edges':
-            new_key = 'Chosen'
-        elif key == 'shortest_edges':
-            new_key = 'Shortest'
-        elif key == 'modeled_edges':
-            new_key = 'Modeled'
-        else:
-            new_key = key
-        
-        line_dict[new_key] = {
-            'links': result_dict[key].values,
-            'coords': get_route_line(result_dict[key].values,geo_dict),
-        }
-    return line_dict
-
-def add_metrics_to_tooltip(line_dict,length_dict,geo_dict):
-    '''
-    Function used to add various overlap metrics to the line dictionary
-    '''
-
-    chosen = line_dict['Chosen']['links']
-    shortest = line_dict['Shortest']['links']
-
-    line_dict['Chosen']['detour_pct'] = detour_factor(chosen,shortest,length_dict)
-
-    for key, item in line_dict.items():
-        if key == 'Chosen':
-            continue
-        line = item['links']
-        line_dict[key]['jaccard index'] = round(jaccard_exact(chosen,line,length_dict),3)
-        line_dict[key]['frechet_dist'] = round(frechet_distance(chosen,line,geo_dict),3)
-        line_dict[key]['buffer_dist'] = round(jaccard_buffer(chosen,line,geo_dict),3)
-        line_dict[key]['detour_pct'] = round(detour_factor(line,shortest,length_dict),3)
-
-    return line_dict
-
-def basic_three_viz(tripid,results_dict,crs,length_dict,geo_dict,tile_info_dict):
-    line_dict = construct_line_dict(['matched_edges','shortest_edges','modeled_edges'],results_dict[tripid],geo_dict)
-    line_dict = add_metrics_to_tooltip(line_dict,length_dict,geo_dict)
-    mymap = visualize_three(tripid,line_dict,results_dict[tripid]['coords'],crs,tile_info_dict)
-    return mymap
-
-def retrieve_geos(x,y,results_dict,links,latlon=False):
-    '''
-    Pulls out the chosen, shortest, and modeled geometry from results dict that intersect
-    with the inputed coordinate
-    '''
-    links = links.copy()
-    links.set_index(['linkid','reverse_link'],inplace=True)
-    feature = Point(x,y).buffer(100)
-    trips_intersecting_geo = []
-    for tripid, item in results_dict.items():
-        #get line geo
-        shortest_geo = links.loc[[tuple(x) for x in results_dict[tripid]['matched_edges'].values],'geometry'].tolist()
-        #test if intersecting
-        if MultiLineString(shortest_geo).intersects(feature):
-            trips_intersecting_geo.append(tripid)
-    return trips_intersecting_geo
-
-import matplotlib.pyplot as plt
-import matplotlib.colors as colors
-
-# Extract colors from a ColorBrewer scheme (e.g., 'Set2')
-# # Convert them to HEX format if needed
-colorbrewer_hex = [colors.to_hex(c) for c in plt.get_cmap('Set2').colors]
-
-#TODO only take the four that have the best metric
-
-def visualize_three(tripid,match_dict,modeled_dicts,geo_dict,coords_dict,crs,tile_info_dict):
-    '''
-    Takes in one or more line strings, an origin, and a destination and plots them
-    '''
-
-    # handle the chosen and the shortest (these should always by provided)
-    chosen = match_dict[tripid]['matched_edges'].values
-    shortest = match_dict[tripid]['shortest_edges'].values
-
-    chosen = get_route_line(chosen,geo_dict)
-    shortest = get_route_line(shortest,geo_dict)
-    
-    #get start/end and center from the chosen geometry
-    line_geo = LineString(chosen)
-    line_geo = gpd.GeoSeries(line_geo,crs=crs)
-    line_geo = line_geo.to_crs(epsg='4326')
-        
-    start_pt = list(line_geo.iloc[0].coords)[0]
-    end_pt = list(line_geo.iloc[-1].coords)[-1]
-    x_mean = line_geo.unary_union.centroid.x
-    y_mean = line_geo.unary_union.centroid.y
-
-    # Create a Folium map centered around the mean of the GPS points
-    center = [y_mean,x_mean]
-    mymap = folium.Map(location=center,
-                       zoom_start=15,
-                       control_scale=True,
-                       tiles=None)
-    # add tiles
-    folium.TileLayer(**tile_info_dict).add_to(mymap)
-    
-    # init legend
-    legend_lines = ""
-    idx = 0 # for the color selection
-
-    # add chosen to folium
-    chosen = gpd.GeoDataFrame(
-        {'length':match_dict[tripid]['chosen_length'],'detour':match_dict[tripid]['chosen_detour'],'geometry':LineString(chosen)},
-        index = [0],
-        crs = crs
-    ).to_crs('epsg:4326').to_json()
-    tooltip = folium.GeoJsonTooltip(fields= ['length','detour'])
-    folium.GeoJson(chosen,name='Chosen',
-                   style_function=lambda x,
-                   color=colorbrewer_hex[idx]: {'color': color, 'weight': 12, 'opacity':0.5},
-                   tooltip=tooltip
-                   ).add_to(mymap)
-    label = 'Chosen'
-    legend_lines += f'''
-    <p><span style="display:inline-block; background-color:{colorbrewer_hex[idx]}; width:50px; height:10px; vertical-align:middle;"></span>&emsp;{label}</p>
-    '''
-    idx += 1
-
-    # add shortest to folium
-    shortest = gpd.GeoDataFrame(
-        {'length':match_dict[tripid]['shortest_length'],
-         'jaccard_exact':match_dict[tripid]['shortest_jaccard_exact'],
-         'jaccard_buffer':match_dict[tripid]['shortest_jaccard_buffer'],
-         'geometry':LineString(shortest)},
-        index = [0],
-        crs = crs
-    ).to_crs('epsg:4326').to_json()
-    tooltip = folium.GeoJsonTooltip(fields= ['length','jaccard_exact','jaccard_buffer'])
-    folium.GeoJson(shortest,name='Shortest',
-                   style_function=lambda x,
-                   color=colorbrewer_hex[idx]: {'color': color, 'weight': 12, 'opacity':0.5},
-                   tooltip=tooltip
-                   ).add_to(mymap)
-    label = 'Shortest'
-    legend_lines += f'''
-    <p><span style="display:inline-block; background-color:{colorbrewer_hex[idx]}; width:50px; height:10px; vertical-align:middle;"></span>&emsp;{label}</p>
-    '''
-    idx += 1
-    
-    # add modeled to folium
-    # TODO make it so it accepts many different modeled results
-    # TODO also make it optional incase we just want to examine shortest vs chosen
-    subset = {model_name:modeled_dict[tripid] for model_name, modeled_dict in modeled_dicts.items()}
-    
-    #find max jaccard exact and buffer
-    max_jaccard_exact = {model_name:item['modeled_jaccard_exact'] for model_name, item in subset.items()}
-    max_jaccard_exact = max(max_jaccard_exact,key=max_jaccard_exact.get)
-
-    max_jaccard_buffer = {model_name:item['modeled_jaccard_buffer'] for model_name, item in subset.items()}
-    max_jaccard_buffer = max(max_jaccard_buffer,key=max_jaccard_buffer.get)
-
-    if max_jaccard_buffer == max_jaccard_exact:
-        model_name = "Overall Best: " + max_jaccard_exact
-        modeled_dict = subset[max_jaccard_exact]
-        color = colorbrewer_hex[idx]
-        modeled = modeled_dict['modeled_edges'].values
-        modeled = get_route_line(modeled,geo_dict)
-        modeled = gpd.GeoDataFrame(
-            {'name':model_name,
-                'length':modeled_dict['modeled_length'],
-                'detour':modeled_dict['modeled_detour'],
-                'jaccard_exact':modeled_dict['modeled_jaccard_exact'],
-                'jaccard_buffer':modeled_dict['modeled_jaccard_buffer'],
-                # TODO need calibration coefficients and objective function type
-                'geometry':LineString(modeled)},
-            index = [0],
-            crs = crs
-        ).to_crs('epsg:4326').to_json()
-        tooltip = folium.GeoJsonTooltip(fields= ['name','length','detour','jaccard_exact','jaccard_buffer'])
-        folium.GeoJson(modeled,name=model_name,
-                    style_function=lambda x,
-                    color=color: {'color': color, 'weight': 12, 'opacity':0.5},
-                    tooltip=tooltip
-                    ).add_to(mymap)
-        legend_lines += f'''
-        <p><span style="display:inline-block; background-color:{color}; width:50px; height:10px; vertical-align:middle;"></span>&emsp;{model_name}</p>
-        '''
-        idx += 1
-
-    else:
-
-        model_name = "Exact Best: " + max_jaccard_exact
-        modeled_dict = subset[max_jaccard_exact]
-        color = colorbrewer_hex[idx]
-        modeled = modeled_dict['modeled_edges'].values
-        modeled = get_route_line(modeled,geo_dict)
-        modeled = gpd.GeoDataFrame(
-            {'name':model_name,
-                'length':modeled_dict['modeled_length'],
-                'detour':modeled_dict['modeled_detour'],
-                'jaccard_exact':modeled_dict['modeled_jaccard_exact'],
-                'jaccard_buffer':modeled_dict['modeled_jaccard_buffer'],
-                # TODO need calibration coefficients and objective function type
-                'geometry':LineString(modeled)},
-            index = [0],
-            crs = crs
-        ).to_crs('epsg:4326').to_json()
-        tooltip = folium.GeoJsonTooltip(fields= ['name','length','detour','jaccard_exact','jaccard_buffer'])
-        folium.GeoJson(modeled,name=model_name,
-                    style_function=lambda x,
-                    color=color: {'color': color, 'weight': 12, 'opacity':0.5},
-                    tooltip=tooltip
-                    ).add_to(mymap)
-        legend_lines += f'''
-        <p><span style="display:inline-block; background-color:{color}; width:50px; height:10px; vertical-align:middle;"></span>&emsp;{model_name}</p>
-        '''
-        idx += 1
-
-        model_name = "Buffer Best" + max_jaccard_buffer
-        modeled_dict = subset[max_jaccard_buffer]
-        color = colorbrewer_hex[idx]
-        modeled = modeled_dict['modeled_edges'].values
-        modeled = get_route_line(modeled,geo_dict)
-        modeled = gpd.GeoDataFrame(
-            {'name':model_name,
-                'length':modeled_dict['modeled_length'],
-                'detour':modeled_dict['modeled_detour'],
-                'jaccard_exact':modeled_dict['modeled_jaccard_exact'],
-                'jaccard_buffer':modeled_dict['modeled_jaccard_buffer'],
-                # TODO need calibration coefficients and objective function type
-                'geometry':LineString(modeled)},
-            index = [0],
-            crs = crs
-        ).to_crs('epsg:4326').to_json()
-        tooltip = folium.GeoJsonTooltip(fields= ['name','length','detour','jaccard_exact','jaccard_buffer'])
-        folium.GeoJson(modeled,name=model_name,
-                    style_function=lambda x,
-                    color=color: {'color': color, 'weight': 12, 'opacity':0.5},
-                    tooltip=tooltip
-                    ).add_to(mymap)
-        legend_lines += f'''
-        <p><span style="display:inline-block; background-color:{color}; width:50px; height:10px; vertical-align:middle;"></span>&emsp;{model_name}</p>
-        '''
-        idx += 1
-
-    # use a feature group for the rest
-    modeled_fg = folium.FeatureGroup(name=f"All Modeled (N={len(modeled_dict)})",show=False)
-    color = colorbrewer_hex[idx]
-    for model_name, modeled_dict in subset.items():
-        # if idx > len(colorbrewer_hex) - 1:
-        #     color = 'grey'
-        # else:
-        #     color = colorbrewer_hex[idx]
-        
-        # color = 'grey'
-        modeled = modeled_dict['modeled_edges'].values
-        modeled = get_route_line(modeled,geo_dict)
-        modeled = gpd.GeoDataFrame(
-            {'name':model_name,
-             'length':modeled_dict['modeled_length'],
-             'detour':modeled_dict['modeled_detour'],
-             'jaccard_exact':modeled_dict['modeled_jaccard_exact'],
-             'jaccard_buffer':modeled_dict['modeled_jaccard_buffer'],
-             # TODO need calibration coefficients and objective function type
-             'geometry':LineString(modeled)},
-            index = [0],
-            crs = crs
-        ).to_crs('epsg:4326').to_json()
-        tooltip = folium.GeoJsonTooltip(fields= ['name','length','detour','jaccard_exact','jaccard_buffer'])
-        folium.GeoJson(modeled,name=model_name,
-                    style_function=lambda x,
-                    color=color: {'color': color, 'weight': 12, 'opacity':0.5},
-                    tooltip=tooltip,
-                    highlight_function=lambda x: {'color': 'yellow', 'weight': 20}
-                    ).add_to(modeled_fg)
-    legend_lines += f'''
-    <p><span style="display:inline-block; background-color:{color}; width:50px; height:10px; vertical-align:middle;"></span>&emsp;All Modeled (N={len(modeled_dicts)})</p>
-    '''
-    idx += 1
-    modeled_fg.add_to(mymap)
-
-    # add the trace coordinates so we can see if there is a map matching error
-    coords = coords_dict[tripid]
-    coords = [Point(x) for x in coords]
-    coords = gpd.GeoDataFrame({'geometry':coords},crs=crs)
-    coords.to_crs('epsg:4326',inplace=True)
-    coords = coords.to_json()
-    coords = folium.GeoJson(coords,
-                            name='coords',
-                            marker=folium.Circle(radius=10, fill_color="grey", fill_opacity=1, color="black", weight=0),
-                            show=False).add_to(mymap)
-
-    # Add start and end points with play and stop buttons
-    start_icon = folium.Icon(color='green',icon='play',prefix='fa')
-    end_icon = folium.Icon(color='red',icon='stop',prefix='fa')
-    folium.Marker(location=[start_pt[1], start_pt[0]],icon=start_icon).add_to(mymap)
-    folium.Marker(location=[end_pt[1], end_pt[0]],icon=end_icon).add_to(mymap)
-    
-    # Add layer control to toggle layers on/off
-    folium.LayerControl(collapsed=False).add_to(mymap)
-    legend_html = f'''    
-    {{% macro html(this, kwargs) %}}               
-    <div style="
-        position: fixed; 
-        bottom: 50px; left: 10px; width: auto; height: auto; 
-        z-index:9999; font-size:14px; background-color: white; 
-        border:2px solid grey; padding: 10px; opacity: 0.9;">
-        <p>Trip ID: {tripid}</p>
-        {legend_lines}
-    {{% endmacro %}}
-    </div>
-    '''
-    legend = branca.element.MacroElement()
-    legend._template = branca.element.Template(legend_html) 
-    mymap.get_root().add_child(legend)
-
-    return mymap
-
 def uniquify(path):
     counter = 1
     original_stem = path.stem
@@ -1607,337 +1343,67 @@ def uniquify(path):
 
     return path
 
-
-# def visualize_route_attributes(
-#         tripid,
-#         results_dict, # contains the edge list etc
-#         matched_gdf,
-#         modeled_gdf,
-#         links_df,
-#         turns_df,
-#         nodes_df,
-#         route_attribute_cols,
-#         ):
-
-#     '''
-#     This function displays the matched vs shortest/modeled route for a particular trip
-#     It also displays the trip characteristics side be side and plots the any signalized
-#     intersections and stressful turns passed through.
-#     '''
-
-#     # Create copies to prevent alteration
-#     matched_gdf = matched_gdf.copy()
-#     modeled_gdf = modeled_gdf.copy()
-
-#     # Subset data to relevant trip
-#     matched_gdf = matched_gdf[matched_gdf['tripid']==tripid]
-#     modeled_gdf = modeled_gdf[modeled_gdf['tripid']==tripid]
+import folium
+def create_custom_route(betas_tup,tripid,full_set,links,turns,turn_G,length_dict,geo_dict,base_impedance_col="travel_time_min",set_to_zero=['bike lane','cycletrack','multi use path'],set_to_inf = ['not_street']):
     
-#     # Create a Folium map centered around the mean of the matched route
-#     minx, miny, maxx, maxy = matched_gdf.to_crs(epsg='4326').total_bounds
-#     x_mean = (maxx - minx) / 2 + minx
-#     y_mean = (maxy - miny) / 2 + miny
-#     center = [y_mean,x_mean]
-#     m = folium.Map(location=center, zoom_start=14, tiles="cartodbpositron")
-    
-#     # Add GeoJSON data to FeatureGroups
-#     folium.GeoJson(matched_gdf.to_crs(epsg='4326').to_json(),
-#                    name='Matched',
-#                    tooltip=folium.GeoJsonTooltip(fields=route_attribute_cols),
-#                    style_function=lambda x: {'color': 'red'}).add_to(m)
-    
-#     folium.GeoJson(modeled_gdf.to_crs(epsg='4326').to_json(),
-#                    name='Modeled',
-#                    tooltip=folium.GeoJsonTooltip(fields=route_attribute_cols),
-#                    style_function=lambda x: {'color': 'blue'}).add_to(m)
+    one_set = {key:item for key,item in full_set.items() if key == tripid}
 
-#     # Get the start and end points
-#     start_node = results_dict[tripid]['origin_node']
-#     start_node = nodes_df.to_crs('epsg:4326').loc[nodes_df['N']==start_node,'geometry'].item()
+    start, end, year = match_results_to_ods_w_year(one_set)[0]
 
-#     end_node = results_dict[tripid]['destination_node']
-#     end_node = nodes_df.to_crs('epsg:4326').loc[nodes_df['N']==end_node,'geometry'].item()
+    # create a copy of the network to modify
+    turn_G_copy = turn_G.copy()
 
-#     # Add start and end points with play and stop buttons to map
-#     #start_icon = folium.Icon(color='green',icon='play',prefix='fa')
-#     #end_icon = folium.Icon(color='red',icon='stop',prefix='fa')
-#     folium.Marker(location=[start_pt.y, start_pt.x],color='green').add_to(m)
-#     folium.Marker(location=[end_pt.y, end_pt.x],color='red').add_to(m)
+    # if infra is on street (i.e., the link is still traversable but the impedance doesn't apply)
+    links.loc[links['year'] > year,set_to_zero] = 0 
+    # if it's off-street then assign it a very high cost
+    links.loc[(links['year'] > year) & (links.loc[:,set_to_inf]==1).any(axis=1),'link_cost_override'] = True
 
-#     # Add signals and turns for matched route
-
-#     edges = match_dict[tripid]['edges']
-#     list_of_edges = list(zip(edges['linkid'],edges['reverse_link']))
-#     list_of_turns = [(list_of_edges[i][0],list_of_edges[i][1],list_of_edges[i+1][0],list_of_edges[i+1][1]) for i in range(0,len(list_of_edges)-1)]
-
-
-#     #from these we want to get the locations and number of singalized intersections and stressful crossing passed through
-    
-#     df_of_turns = pd.DataFrame(list_of_turns,columns=['source_linkid','source_reverse_link','target_linkid','target_reverse_link'])
-#     subset = pseudo_df.merge(df_of_turns,on=['source_linkid','source_reverse_link','target_linkid','target_reverse_link'])
-
-#     # from this subset we can get the right node ids
-#     #TODO turns should be by edges probably?
-#     #turns = subset[['source_B','turn_type']]
-#     signals = subset.loc[subset['signalized']==True,'source_B'].value_counts()
-#     two_way_stops = subset.loc[subset['unsignalized']==True,'source_B'].value_counts()
-
-#     #and then get the correct rows of the gdf
-#     #turns = nodes.merge(signals,left_on='N',right_on='')
-#     signals = nodes.merge(signals,left_on='N',right_index=True)
-#     signals.columns = ['N','geometry','num_times']
-#     two_way_stops = nodes.merge(two_way_stops,left_on='N',right_index=True)
-#     two_way_stops.columns = ['N','geometry','num_times']
-
-#     # get the start and end point for plotting
-#     start_N = gdf.loc[gdf['tripid']==tripid,'start'].item()
-#     start_pt = nodes.to_crs('epsg:4326').loc[nodes['N']==start_N,'geometry'].item()
-#     end_N = gdf.loc[gdf['tripid']==tripid,'end'].item()
-#     end_pt = nodes.to_crs('epsg:4326').loc[nodes['N']==end_N,'geometry'].item()
-
-
-
-
-
- 
-#    # Add FeatureGroups to the map
-
-
-#    if signals.shape[0] > 0:
-#       signals_geojson = signals.to_crs(epsg='4326').to_json()
-#       signals_fg = FeatureGroup(name='Signals')
-
-#       folium.GeoJson(
-#       signals_geojson,
-#       name="Traffic Signal Turn Movement",
-#       marker=folium.Circle(radius=20, fill_color="red", fill_opacity=.5, color="black", weight=1),
-#       tooltip=folium.GeoJsonTooltip(fields=['N','num_times']),
-#       popup=folium.GeoJsonPopup(fields=['N','num_times']),
-#       #    style_function= lambda feature: {
-#       #        'fillColor': colormap(feature['properties']['speed_mph']),
-#       #    },
-#       highlight_function=lambda feature: {"color":"yellow","weight":3}
-#       ).add_to(signals_fg)
-#       signals_fg.add_to(mymap)
-
-#    if two_way_stops.shape[0] > 0:
-#       two_way_stops_geojson = two_way_stops.to_crs(epsg='4326').to_json()
-#       two_way_stops_fg = FeatureGroup(name='Two Way Stop (chosen)')
-
-#       folium.GeoJson(
-#       two_way_stops_geojson,
-#       name="Two Way Stop with High Stress Cross Street",
-#       marker=folium.Circle(radius=20, fill_color="yellow", fill_opacity=.5, color="black", weight=1),
-#       tooltip=folium.GeoJsonTooltip(fields=['N','num_times']),
-#       popup=folium.GeoJsonPopup(fields=['N','num_times']),
-#       #    style_function= lambda feature: {
-#       #        'fillColor': colormap(feature['properties']['speed_mph']),
-#       #    },
-#       highlight_function=lambda feature: {"color":"yellow","weight":3}
-#       ).add_to(two_way_stops_fg)
-
-#       two_way_stops_fg.add_to(mymap)
-
-
-
-
-#    #autofit content not in this version?
-#    #folium.FitOverlays().add_to(mymap)
-
-#    # Add layer control to toggle layers on/off
-#    folium.LayerControl().add_to(mymap)
-
-#    #retrive overlap
-#    exact_overlap = gdf.loc[gdf['tripid']==tripid,'shortest_exact_overlap_prop'].item()
-#    buffer_overlap = gdf.loc[gdf['tripid']==tripid,'shortest_buffer_overlap'].item()
-
-#    attr = gdf.loc[gdf['tripid']==tripid].squeeze()
-
-#    # Add legend with statistics
-#    legend_html = f'''
-#    <div style="position: fixed; 
-#             bottom: 5px; left: 5px; width: 300px; height: 500px; 
-#             border:2px solid grey; z-index:9999; font-size:14px;
-#             background-color: white;
-#             opacity: 0.9;">
-#    &nbsp; <b>Tripid: {tripid}</b> <br>
-#    &nbsp; Start Point &nbsp; <i class="fa fa-play" style="color:green"></i><br>
-#    &nbsp; End Point &nbsp; <i class="fa fa-stop" style="color:red"></i><br>
-#    &nbsp; Exact Overlap: {exact_overlap*100:.2f}% <br>
-#    &nbsp; Buffer Overlap: {buffer_overlap*100:.2f}% <br>
-
-#    &nbsp; Trip Type: {attr['trip_type']} <br>
-#    &nbsp; Length (mi): {attr['length_ft']/5280:.0f} <br>
-#    &nbsp; Age: {attr['age']} <br>
-#    &nbsp; Gender: {attr['gender']} <br>
-#    &nbsp; Income: {attr['income']} <br>
-#    &nbsp; Ethnicity: {attr['ethnicity']} <br>
-#    &nbsp; Cycling Frequency: {attr['cyclingfreq']} <br>
-#    &nbsp; Rider History: {attr['rider_history']} <br>
-#    &nbsp; Rider Type: {attr['rider_type']} <br><br>
-
-#    &nbsp; Residential %: {attr['highway.residential']*100:.2f}% <br>
-#    &nbsp; Secondary %: {attr['highway.secondary']*100:.2f}% <br>
-#    &nbsp; Tertiary %: {attr['highway.tertiary']*100:.2f}% <br>
-
-#    &nbsp; # of bridges: {int(attr['bridge'])} <br>
-#    &nbsp; # of left turns: {int(attr['left'])} <br>
-#    &nbsp; # of straight turns: {int(attr['straight'])} <br>
-#    &nbsp; # of right turns: {int(attr['right'])} <br>
-#    &nbsp; # of stressful turns: {int(attr['unsignalized'])} <br>
-#    &nbsp; # of signalized turns: {int(attr['signalized'])} <br>
-
-#    </div>
-#    '''
-
-#    mymap.get_root().html.add_child(folium.Element(legend_html))
-
-#    # Save the map to an HTML file or display it in a Jupyter notebook
-#    #mymap.save('map.html')
-#    # mymap.save('/path/to/save/map.html')  # Use an absolute path if needed
-#    return mymap  # Uncomment if you are using Jupyter notebook
-
-   #TODO add in the legend with trip info and then we're golden
-
-
-
-
-# DEPRECATED
-# def loss_function(betas,betas_links,betas_turns,links,
-#                        pseudo_links,pseudo_G,
-#                        matched_traces,link_impedance_function,
-#                        turn_impedance_function,exact,follow_up):
-
-#     #use initial/updated betas to calculate link costs
-#     print('setting link costs')
-#     links = link_impedance_function(betas, betas_links, links)
-#     cost_dict = dict(zip(links['linkid'],links['link_cost']))
-    
-#     #add link costs to pseudo_links
-#     pseudo_links['source_link_cost'] = pseudo_links['source_linkid'].map(cost_dict)
-#     pseudo_links['target_link_cost'] = pseudo_links['target_linkid'].map(cost_dict)
-
-#     #use initial/updated betas to calculate turn costs
-#     print('setting turn costs')
-#     pseudo_links = turn_impedance_function(betas, betas_turns, pseudo_links)
-
-#     #add the source edge, target edge, and turn costs
-#     #TODO experiment with multiplying the turn cost
-#     pseudo_links['total_cost'] = pseudo_links['source_link_cost'] + pseudo_links['target_link_cost'] + pseudo_links['turn_cost']
-
-#     #only keep link with the lowest cost
-#     print('finding lowest cost')
-#     costs = pseudo_links.set_index(['source','target'])['total_cost']
-
-#     #update edge weights
-#     print('updating edge weights')
-#     nx.set_edge_attributes(pseudo_G,values=costs,name='weight')
-
-#     #update edge ids (what was this for?)
-    
-#     #do shortest path routing
-#     shortest_paths = {}
-#     print(f'Shortest path routing with coefficients: {betas}')    
-#     for source, targets in matched_traces.groupby('start')['end'].unique().items():
-
-#         #add virtual links to pseudo_G
-#         pseudo_G, virtual_edges = modeling_turns.add_virtual_links(pseudo_links,pseudo_G,source,targets)
-        
-#         #perform shortest path routing for all target nodes from source node
-#         #(from one to all until target node has been visited)
-#         for target in targets:  
-#             #cant be numpy int64 or throws an error
-#             target = int(target)
+    # run network update
+    betas = [x['beta'] for x in betas_tup]
+    rustworkx_routing_funcs.impedance_update(
+        betas,betas_tup,
+        link_impedance_function,
+        base_impedance_col,
+        turn_impedance_function,
+        links,turns,turn_G_copy)
             
-#             try:
-#                 #TODO every result is only a start node, middle node, then end node
-#                 length, node_list = nx.single_source_dijkstra(pseudo_G,source,target,weight='weight')
-#             except:
-#                 print(source,target)
-#                 length, node_list = nx.single_source_dijkstra(pseudo_G,source,target,weight='weight')
+    # re-add virtual links
+    added_nodes = rustworkx_routing_funcs.add_virtual_edges([start],[end],links,turns,turn_G_copy)
 
-#             #get edge list
-#             edge_list = node_list[1:-1]
+    # route
+    path_lengths, shortest_paths = rustworkx_routing_funcs.rx_shortest_paths((start,end),turn_G_copy)
+    rustworkx_routing_funcs.remove_virtual_links(added_nodes,turn_G_copy)
 
-#             #get geometry from edges
-#             modeled_edges = links.set_index(['source','target']).loc[edge_list]
+    modeled = [list(x) for x in shortest_paths[0]]
+    chosen = one_set[tripid]['matched_edges'].values
+    shortest = one_set[tripid]['shortest_edges'].values
+    length = round(np.array([length_dict.get(tripid[0],0) for tripid in modeled]).sum()/5280,1)
+    detour = round(detour_factor(modeled,shortest,length_dict),2)
+    jaccard_exact_val = jaccard_exact(chosen,modeled,length_dict)
+    jaccard_exact_val = round(jaccard_exact_val[0] / jaccard_exact_val[1],2)
+    jaccard_buffer_val = jaccard_buffer(chosen,modeled,geo_dict)
+    jaccard_buffer_val = round(jaccard_buffer_val[0] / jaccard_buffer_val[1],2)
 
-#             # modeled_edges = links.merge(linkids.loc[edge_list],on=['linkid','reverse_link'],how='inner')
-#             # modeled_edges = gpd.GeoDataFrame(modeled_edges,geometry='geometry')
-
-#             shortest_paths[(source,target)] = {
-#                 'edges': set(modeled_edges['linkid'].tolist()),
-#                 'geometry':MultiLineString(modeled_edges['geometry'].tolist()),#modeled_edges.dissolve()['geometry'].item(),
-#                 'length':MultiLineString(modeled_edges['geometry'].tolist()).length
-#                 }
-
-#         #remove virtual links
-#         pseudo_G = modeling_turns.remove_virtual_edges(pseudo_G,virtual_edges)
-    
-#     print('calculating objective function')
-
-#     #turn shortest paths dict to dataframe
-#     shortest_paths = pd.DataFrame.from_dict(shortest_paths,orient='index')
-#     shortest_paths.reset_index(inplace=True)
-#     shortest_paths.columns = ['start','end','linkids','geometry','length']
-#     #shortest_paths[['start','end']] = shortest_paths['index'].apply(lambda x: pd.Series(x))
-#     #shortest_paths.drop(columns=['index'],inplace=True)
-
-#     #add modeled paths to matched_traces dataframe
-#     merged = matched_traces.merge(shortest_paths,on=['start','end'],suffixes=(None,'_modeled'))
-
-#     if exact:
-#         sum_all = merged['length'].sum() * 5280
-#         all_overlap = 0
-
-#         for idx, row in merged.iterrows():
-#             #find shared edges
-#             chosen_and_shortest = row['linkids_modeled'] & row['linkids']
-#             #get the lengths of those links
-#             overlap_length = links.set_index('linkid').loc[list(chosen_and_shortest)]['length_ft'].sum()
-#             #overlap_length = np.sum([link_lengths.get(link_tup,'error') for link_tup in chosen_and_shortest])
-#             all_overlap += overlap_length
-
-#         #calculate objective function value
-#         val = all_overlap / sum_all
-#         print('Exact overlap percent is:',np.round(val*100,1),'%')
-    
-#     #calculate approximate overlap (new approach)
-#     else:
-#         #buffer and dissolve generated route and matched route
-#         buffer_ft = 500
-
-#         merged.set_geometry('geometry',inplace=True)
-#         merged['buffered_geometry'] = merged.buffer(buffer_ft)
-#         merged.set_geometry('buffered_geometry',inplace=True)
-#         merged['area'] = merged.area
-
-#         merged.set_geometry('geometry_modeled',inplace=True)
-#         merged['buffered_geometry_modeled'] = merged.buffer(buffer_ft)
-#         merged.set_geometry('buffered_geometry_modeled',inplace=True)
-#         merged['area_modeled'] = merged.area
-
-#         #for each row find intersection between buffered features
-#         merged['intersection'] = merged.apply(lambda row: row['buffered_geometry'].intersection(row['buffered_geometry_modeled']), axis=1)
-
-#         # merged['intersection'] = merged.apply(
-#         #     lambda row: shapely.intersection(row['buffered_geometry'],row['buffered_geometry_modeled']))
-#         merged.set_geometry('intersection',inplace=True)
-#         merged['intersection_area'] = merged.area
-
-#         #find the overlap with the total area (not including intersections)
-#         #if the modeled/chosen links are different, then overlap decreases
-#         #punishes cirquitious modeled routes that utilize every link in the chosen one but include extraneous ones
-#         merged['overlap'] = merged['intersection_area'] / (merged['area_modeled'] + merged['area'] - merged['intersection_area'])
-
-#         #find average overlap (using median to reduce impact of outliers?)
-#         val = merged['overlap'].median()
-#         print('Median overlap percent is:',np.round(val*100,1),'%')
-    
-#     if follow_up:
-#         return merged
-
-#     return -val#, merged
+    custom_route = gpd.GeoDataFrame(
+        data={'tripid':[tripid],
+            'length':length,
+            'detour':detour,
+            'jaccard_exact':jaccard_exact_val,
+            'jaccard_buffer':jaccard_buffer_val,
+            'geometry':LineString(get_route_line(shortest_paths[0],geo_dict))
+            },
+        index=[0],
+        crs=links.crs
+    ).to_crs('epsg:4326').to_json()
+    color='yellow'
+    tooltip = folium.GeoJsonTooltip(fields= ['tripid','length','detour','jaccard_exact','jaccard_buffer'])
+    custom_route = folium.GeoJson(custom_route,name='Custom',
+                style_function=lambda x,
+                color=color: {'color': color, 'weight': 12, 'opacity':0.5},
+                tooltip=tooltip,
+                highlight_function=lambda x: {'color': color, 'weight': 20}
+                )
+    return custom_route
 
 # def follow_up(betas,links,pseudo_links,pseudo_G,matched_traces,exact=False):
 

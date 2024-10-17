@@ -118,13 +118,11 @@ def route_attributes(tripid,match_dict_entry,link_cols,turn_cols,links,turns_df,
     #TODO change this cuz it's what's taking forever
     #get attributes
     route_w_attr = links.loc[linkids_and_reverse]
-    lines = [list(x.coords) for x in route_w_attr.geometry.tolist()]
+    lines = [list(x.coords) if rev == False else list(x.coords)[::-1] for x, rev in zip(route_w_attr.geometry.tolist(),reverse_links)]
     route_geo = lines[0]
     for line in lines[1:]:
         route_geo.extend(line[1:])
     summary_attributes['geometry'] = LineString(route_geo)
-
-    # turns_w_attr = turns_df.loc[turns]
     
     for col, item in link_cols.items():
         if isinstance(item,tuple):
@@ -164,6 +162,8 @@ def route_attributes(tripid,match_dict_entry,link_cols,turn_cols,links,turns_df,
                         summary_attributes[col+'_pct'] = \
                             (route_w_attr.loc[route_w_attr[col]==unique_val,'length_mi'].sum() / route_w_attr['length_mi'].sum() * 100).round(2)
 
+
+    # turns_w_attr = turns_df.loc[turns]
     # TODO indexing error here
     # for col, item in turn_cols.items():
     #     if item == 'bool':

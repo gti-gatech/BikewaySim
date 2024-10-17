@@ -13,8 +13,8 @@ calibration attempts with the same name (e.g., adjusting the population size)
 full_model = (
     {'col':'2lpd','type':'link','range':[0,3]},
     {'col':'3+lpd','type':'link','range':[0,3]},
-    {'col':'(30,40] mph','type':'link','range':[0,3]},
-    {'col':'(40,inf) mph','type':'link','range':[0,3]},
+    {'col':'(30,inf) mph','type':'link','range':[0,3]},
+    # {'col':'(40,inf) mph','type':'link','range':[0,3]},
     {'col':'[4k,10k) aadt','type':'link','range':[0,3]},
     {'col':'[10k,inf) aadt','type':'link','range':[0,3]},
     {'col':'[4,6) grade','type':'link','range':[0,3]},
@@ -27,10 +27,17 @@ full_model = (
 std_set_to_zero = ['bike lane','cycletrack','multi use path']
 std_set_to_inf = ['not_street']
 
-break_stuff = ({'col':'bike lane','type':'link','range':[-20,0]},)
+break_stuff = ({'col':'bike lane','type':'link','range':[-1,5]},)
 
 # determine variables, impedance type, and search range
 all_calibrations = [
+    {
+    'calibration_name': 'rider_type',
+    'betas_tup': full_model,
+    'set_to_zero': std_set_to_zero,
+    'set_to_inf': std_set_to_inf,
+    'objective_function': stochastic_optimization.jaccard_buffer_mean,
+    },
     # {
     #     'calibration_name': 'condensed',
     #     'betas_tup': (
@@ -66,30 +73,51 @@ all_calibrations = [
     #     'betas_tup': full_model,
     #     'objective_function': stochastic_optimization.jaccard_buffer_mean
     # },
-    {
-        'calibration_name': 'jaccard_buffer_mean',
-        'betas_tup': full_model,
-        'set_to_zero': std_set_to_zero,
-        'set_to_inf': std_set_to_inf,
-        'objective_function': stochastic_optimization.jaccard_buffer_mean,
-        'stochastic_optimization_settings': {'method':'pso','options':{'maxiter':500,'popsize':25}},
-    },
-    {
-        'calibration_name': 'jaccard_buffer_mean',
-        'betas_tup': full_model,
-        'set_to_zero': std_set_to_zero,
-        'set_to_inf': std_set_to_inf,
-        'objective_function': stochastic_optimization.jaccard_buffer_mean,
-        'stochastic_optimization_settings': {'method':'pso','options':{'maxiter':500,'popsize':35}},
-    },
-    {
-        'calibration_name': 'jaccard_buffer_mean',
-        'betas_tup': full_model,
-        'set_to_zero': std_set_to_zero,
-        'set_to_inf': std_set_to_inf,
-        'objective_function': stochastic_optimization.jaccard_buffer_mean,
-        'stochastic_optimization_settings': {'method':'pso','options':{'maxiter':500,'popsize':50}},
-    },
+    # {
+    #     'calibration_name': 'jaccard_buffer_mean',
+    #     'betas_tup': full_model,
+    #     'set_to_zero': std_set_to_zero,
+    #     'set_to_inf': std_set_to_inf,
+    #     'objective_function': stochastic_optimization.jaccard_buffer_mean,
+    #     'stochastic_optimization_settings': {'method':'pso','options':{'maxiter':500,'popsize':25}},
+    #     'print_results':True
+    # },
+    # {
+    #     'calibration_name': 'jaccard_buffer_mean',
+    #     'betas_tup': full_model,
+    #     'set_to_zero': std_set_to_zero,
+    #     'set_to_inf': std_set_to_inf,
+    #     'objective_function': stochastic_optimization.jaccard_buffer_mean,
+    #     'stochastic_optimization_settings': {'method':'pso','options':{'maxiter':500,'popsize':35}},
+    #     'print_results':True
+    # },
+    # {
+    #     'calibration_name': 'jaccard_buffer_mean',
+    #     'betas_tup': full_model,
+    #     'set_to_zero': std_set_to_zero,
+    #     'set_to_inf': std_set_to_inf,
+    #     'objective_function': stochastic_optimization.jaccard_buffer_mean,
+    #     'stochastic_optimization_settings': {'method':'pso','options':{'maxiter':500,'popsize':50}},
+    #     'print_results':True
+    # },
+    # {
+    #     'calibration_name': 'cmaes',
+    #     'betas_tup': full_model,
+    #     'set_to_zero': std_set_to_zero,
+    #     'set_to_inf': std_set_to_inf,
+    #     'objective_function': stochastic_optimization.jaccard_buffer_mean,
+    #     'stochastic_optimization_settings': {'method':'cmaes','options':{'maxiter':500,'popsize':35}},
+    #     'print_results':True
+    # },
+    # {
+    #     'calibration_name': 'de',
+    #     'betas_tup': full_model,
+    #     'set_to_zero': std_set_to_zero,
+    #     'set_to_inf': std_set_to_inf,
+    #     'objective_function': stochastic_optimization.jaccard_buffer_mean,
+    #     'stochastic_optimization_settings': {'method':'de','options':{'maxiter':500,'popsize':35}},
+    #     'print_results':True
+    # },
     # {
     #     'calibration_name': 'jaccard_buffer_total_no_bike',
     #     'betas_tup': full_model,
@@ -132,6 +160,6 @@ all_calibrations = [
     #     'objective_function': stochastic_optimization.jaccard_buffer_mean,
     #     'stochastic_optimization_settings': {'method':'pso','options':{'maxiter':4,'popsize':2}},
     #     'print_results': True,
-    #     'force_save': True
+    #     'force_save': False
     # }
 ]

@@ -50,7 +50,7 @@ config["osmdwnld_fp"] = osmdwnld_fp
 
 #tiles config for folium
 stadia_toner = {
-    "tiles": 'https://tiles.stadiamaps.com/tiles/stamen_toner_lite/{z}/{x}/{y}{r}.png' + f"?api_key={config['stadia_api']}",
+    "tiles": 'https://tiles.stadiamaps.com/tiles/stamen_toner_lite/{z}/{x}/{y}{r}.png' + f"?api_key={config['stadiaapikey']}",
     "name": 'Stamen Toner',
     "attr": xyz.Stadia.StamenToner.attribution
 }
