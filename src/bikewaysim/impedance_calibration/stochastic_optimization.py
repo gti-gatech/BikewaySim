@@ -94,6 +94,61 @@ def impedance_calibration(betas:np.array,
     
     # start_time = time.time()
 
+    # runs the shortest path routing part
+    results_dict = impedance_routing(
+        betas,
+        betas_tup,
+        link_impedance_function,
+        base_impedance_col,
+        turn_impedance_function,
+        links,
+        turns,
+        turn_G,
+        ods,
+        set_to_zero,
+        set_to_inf
+        )
+
+    if results_dict is None:
+        if print_results:
+            print('negative edge weights, skipping guess')
+        if track_calibration_results == True:
+            past_vals.append(list(betas)+[np.nan])
+    
+    #calculate the objective function
+    #trim kwargs to only what's needed for the funtion 
+    signature = inspect.signature(loss_function)
+    arg_names = [param.name for param in signature.parameters.values()]
+    loss_function_kwargs = {key:item for key,item in loss_function_kwargs.items() if key in arg_names}
+    val_to_minimize = loss_function(results_dict,match_results,**loss_function_kwargs)
+    
+    if print_results:
+        print(list(betas.round(2))+[np.round(val_to_minimize,2)])
+
+    #keep track of all the past betas used for visualization purposes
+    if track_calibration_results == True:
+        past_vals.append(list(betas)+[val_to_minimize])
+    
+    # print('took',(time.time()-start_time),'s')
+    return val_to_minimize
+
+def impedance_routing(
+        betas,
+        betas_tup,
+        link_impedance_function,
+        base_impedance_col,
+        turn_impedance_function,
+        links,
+        turns,
+        turn_G,
+        ods,
+        set_to_zero,
+        set_to_inf
+    ):
+    '''
+    Function that performs the shortest path routing aspect of the impedance calibration
+    '''
+
     # create a copy of links so the original isn't modified when the next 
     # round of shortest paths is calculated
     links = links.copy()
@@ -112,73 +167,34 @@ def impedance_calibration(betas:np.array,
 
     # make sure there are no negative edge weights
     if isinstance(updated_edge_costs,bool):
-        if print_results:
-            print('negative edge weights, skipping guess')
-        if track_calibration_results == True:
-            past_vals.append(list(betas)+[np.nan])
-        return np.nan
+        return None
 
     #TODO clean this up while calibrations are running in the background
     starts = [x[0] for x in ods]
     ends = [x[1] for x in ods]
     years = sorted(list(set([x[2] for x in ods])))[::-1]
 
-    # create the networks by the year
-    year_networks = {}
-    for year in years:
-        # create a copy of the network to modify
-        turn_G_copy = turn_G.copy()
-        
-        # if infra is on street (i.e., the link is still traversable but the impedance doesn't apply)
-        links.loc[links['year'] > year,set_to_zero] = 0 
-        # if it's off-street then assign it a very high cost
-        links.loc[(links['year'] > year) & (links.loc[:,set_to_inf]==1).any(axis=1),'link_cost_override'] = True
-
-        # run network update
-        updated_edge_costs = rustworkx_routing_funcs.impedance_update(betas,betas_tup,
-                link_impedance_function,
-                base_impedance_col,
-                turn_impedance_function,
-                links,turns,turn_G_copy)
-        # just incase a negative link cost appears as a result
-        if isinstance(updated_edge_costs,bool):
-            if print_results:
-                print('negative edge weights, skipping guess')
-            if track_calibration_results == True:
-                past_vals.append(list(betas)+[np.nan])
-            return np.nan
-        
-        # re-add virtual links
-        rustworkx_routing_funcs.add_virtual_edges(starts,ends,links,turns,turn_G_copy)
-        
-        # add the network to the dict
-        year_networks[year] = turn_G_copy
+    year_networks = rustworkx_routing_funcs.create_year_networks(
+        betas,betas_tup,starts,ends,turn_G,links,turns,set_to_zero,set_to_inf,years,link_impedance_function,turn_impedance_function,base_impedance_col
+    )
+    
+    # second negative impedance check
+    if year_networks is None:
+        return None
 
     # add virtual edges to the main graph
     added_nodes = rustworkx_routing_funcs.add_virtual_edges(starts,ends,links,turns,turn_G)
+    
     # calculate the shortest paths
     path_lengths, shortest_paths = rustworkx_routing_funcs.rx_shortest_paths_year(ods,turn_G,year_networks)
+    
     # format the output
     results_dict = {(od[0],od[1]):{'length':path_length,'edge_list':shortest_path} for path_length, shortest_path, od in zip(path_lengths,shortest_paths,ods)}
+    
     # remove the virtual links for the next run
     rustworkx_routing_funcs.remove_virtual_links(added_nodes,turn_G)
-    
-    #calculate the objective function
-    #trim kwargs to only what's needed for the funtion 
-    signature = inspect.signature(loss_function)
-    arg_names = [param.name for param in signature.parameters.values()]
-    loss_function_kwargs = {key:item for key,item in loss_function_kwargs.items() if key in arg_names}
-    val_to_minimize = loss_function(results_dict,match_results,**loss_function_kwargs)
-    
-    if print_results:
-        print(list(betas.round(2))+[np.round(val_to_minimize,2)])
 
-    #keep track of all the past betas used for visualization purposes
-    if track_calibration_results == True:
-        past_vals.append(list(betas)+[val_to_minimize])
-    
-    # print('took',(time.time()-start_time),'s')
-    return val_to_minimize
+    return results_dict
 
 ########################################################################################
 

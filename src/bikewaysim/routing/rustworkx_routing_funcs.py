@@ -5,6 +5,20 @@ import pickle
 
 from bikewaysim.paths import config
 
+def import_calibration_network(config):
+    '''
+    Backend function for loading calibration network files
+    '''
+    # import the calibration network
+    with (config['calibration_fp']/"calibration_network.pkl").open('rb') as fh:
+        links,turns = pickle.load(fh)
+    # make the length and geo dict
+    length_dict = dict(zip(links['linkid'],links.length))
+    geo_dict = dict(zip(links['linkid'],links.geometry))
+    # form turn graph
+    turn_G = make_turn_graph(turns)
+    return links, turns, length_dict, geo_dict, turn_G
+
 def make_turn_graph(turns):
     '''
     Takes in the turns dataframe and returns a rustworkx network
@@ -26,20 +40,6 @@ def make_turn_graph(turns):
     turn_G.add_edges_from(edges_to_add)
 
     return turn_G
-
-def import_calibration_network(config):
-    '''
-    Backend function for loading calibration network files
-    '''
-    # import the calibration network
-    with (config['calibration_fp']/"calibration_network.pkl").open('rb') as fh:
-        links,turns = pickle.load(fh)
-    # make the length and geo dict
-    length_dict = dict(zip(links['linkid'],links.length))
-    geo_dict = dict(zip(links['linkid'],links.geometry))
-    # form turn graph
-    turn_G = make_turn_graph(turns)
-    return links, turns, length_dict, geo_dict, turn_G
 
 def rx_conversion_helpers(G_rx):
     '''
@@ -126,6 +126,52 @@ def rx_shortest_paths_year(ods,G_rx,G_rx_dict):
     
     return path_lengths, shortest_paths # these are lists of the results
 
+def create_year_networks(
+        betas,
+        betas_tup,
+        starts,
+        ends,
+        turn_G,
+        links,
+        turns,
+        set_to_zero,
+        set_to_inf,
+        years,
+        link_impedance_function,
+        turn_impedance_function,
+        base_impedance_col
+    ):
+    '''
+    Creates a dict of PyDigraphs based on the year
+    '''
+
+    year_networks = {}
+    for year in years:
+        # create a copy of the network to modify
+        turn_G_copy = turn_G.copy()
+        
+        # if infra is on street (i.e., the link is still traversable but the impedance doesn't apply)
+        links.loc[links['year'] > year,set_to_zero] = 0 
+        # if it's off-street then assign it a very high cost
+        links.loc[(links['year'] > year) & (links.loc[:,set_to_inf]==1).any(axis=1),'link_cost_override'] = True
+
+        # run network update
+        updated_edge_costs = impedance_update(betas,betas_tup,
+                link_impedance_function,
+                base_impedance_col,
+                turn_impedance_function,
+                links,turns,turn_G_copy)
+        # just incase a negative link cost appears as a result
+        if isinstance(updated_edge_costs,bool):
+            return None
+        
+        # re-add virtual links
+        add_virtual_edges(starts,ends,links,turns,turn_G_copy)
+        
+        # add the network to the dict
+        year_networks[year] = turn_G_copy
+    
+    return year_networks
 
 def impedance_update(betas:np.array,betas_tup:tuple,
                      link_impedance_function,
@@ -181,65 +227,6 @@ def impedance_update(betas:np.array,betas_tup:tuple,
     # TODO add virtual links
 
     return updated_edge_costs
-
-def new_impedance_update(betas:np.array,betas_tup:tuple,
-                     link_impedance_function,
-                     base_impedance_col:str,
-                     turn_impedance_function,
-                     links:pd.DataFrame,turns:pd.DataFrame,
-                     turn_G:rx.PyDiGraph):
-    '''
-    This function takes in the betas, impedance functions, and network objects
-    and updates the network graph accordingly.
-
-    Need to think about how to incorporate infrastructure availability into this
-    '''
-    
-    #update link costs
-    link_impedance_function(betas, betas_tup, links, base_impedance_col)
-    
-    # override the cost with 9e9 if future off-street facility
-    # this effectively prevents routing w/o messing around with the network structure
-    links.loc[links['link_cost_override']==True,'link_cost'] = 9e9
-
-    #create cost dict
-    tuple_index = tuple(zip(links['linkid'],links['reverse_link']))
-    cost_dict = dict(zip(tuple_index,links['link_cost']))
-    
-    #costs are stored in the turn graph (only target matters, initial link cost is added during routing)
-    turns['target_link_cost'] = turns[['target_linkid','target_reverse_link']].apply(lambda x: cost_dict.get(tuple(x.values),False),axis=1)
-
-    #update turn costs
-    turn_impedance_function(betas, betas_tup, turns)
-
-    #cacluate new total cost
-    # TODO round these values because they don't need this many decimal points (usually in travel time)
-    turns['total_cost'] = (turns['target_link_cost'] + turns['turn_cost'])
-
-    if turns['total_cost'].isna().any():
-        raise Exception("There are nan edge costs, exiting")
-
-    #check for negative link impedance
-    if (links['link_cost'] < 0).any() | (turns['total_cost'] < 0).any():
-        return False
-
-    node_to_idx, _ = rx_conversion_helpers(turn_G)
-
-    #update turn network graph with final cost
-    cols = ['source_linkid','source_reverse_link','target_linkid','target_reverse_link','total_cost']
-    updated_edge_costs = [((row[0],row[1]),(row[2],row[3]),row[4]) for row in turns[cols].values]
-    updated_edge_costs = [(node_to_idx[x[0]],node_to_idx[x[1]],x[2]) for x in updated_edge_costs] 
-
-    # update the added 
-
-    # updates the edges
-    _ = [turn_G.update_edge(*x) for x in updated_edge_costs]
-
-    # TODO add virtual links
-
-    return updated_edge_costs
-
-
 
 def back_to_base_impedance(link_impedance_col,links,turns,turn_G):
     '''

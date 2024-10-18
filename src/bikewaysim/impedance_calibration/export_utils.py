@@ -22,6 +22,21 @@ def handle_directories(subset,calibration_name):
 
     return result_fp, routing_fp, loss_fp
 
+def get_dirctories():
+    result_fps = (config['calibration_fp'] / f"results").glob("*.pkl")
+    routing_fps = (config['calibration_fp'] / f"routing").glob("*.pkl")
+    loss_fps = (config['calibration_fp'] / f"loss").glob("*.pkl")
+    return result_fps, routing_fps, loss_fps
+
+def get_name_parameters(fp):
+    fp_split = fp.stem.split(',')
+    fp_dict = {
+        'subset': fp_split[0],
+        'calibration_name': fp_split[1],
+        'run_num': fp_split[2]
+    }
+    return fp_dict
+
 def uniquify(path):
     '''
     Appends a number to the end of the outputs so that it doesn't overwrite previous calibration runs
