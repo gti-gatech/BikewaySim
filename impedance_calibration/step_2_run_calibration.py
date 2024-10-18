@@ -5,51 +5,34 @@ import time
 
 from bikewaysim.paths import config
 from bikewaysim.impedance_calibration import stochastic_optimization
+from bikewaysim.general_utils import print_elapsed_time
+
+#NOTE relative import, do not move this file from the directory
 from step_1_calibration_experiments import all_calibrations
-
-import time
-
-def print_elapsed_time(seconds):
-    # Round the total seconds at the start
-    seconds = round(seconds)
-    
-    # Calculate the elapsed days, hours, and minutes
-    days = seconds // 86400  # 1 day = 86400 seconds
-    hours = (seconds % 86400) // 3600  # 1 hour = 3600 seconds
-    minutes = (seconds % 3600) // 60
-
-    # Build the time string
-    if days > 0:
-        elapsed_time = f"{days:02} days {hours:02} hours {minutes:02} minutes"
-    else:
-        elapsed_time = f"{hours:02} hours {minutes:02} minutes"
-
-    # Return the formatted elapsed time
-    return elapsed_time
 
 if __name__ == '__main__':
     
     start_time = time.time()
     
-    NUM_RUNS = 4#100 # Number of times to run each calibration
+    NUM_RUNS = 4 # Number of times to run each calibration
     MAX_WORKERS = 12 # For my machine this takes about ~70% CPU and ~80% Memory
     
-    print('Using these calibration settings:')
+    print('Found these calibration settings:')
     print([x['calibration_name'] for x in all_calibrations])
     print('Running each calibration',NUM_RUNS,'times')
 
-    # NOTE COMMENT OUT LINE 19-24 TO DO ALL TRIPS CALIBRATION
-    # Import users
-    with (config['calibration_fp']/'ready_for_calibration_users.pkl').open('rb') as fh:
-        ready_for_calibration_users = pickle.load(fh)
+    # NOTE comment out lines 41-53 to run calibration on all matched traces
+    # Import subsets
+    with (config['calibration_fp']/'subsets.pkl').open('rb') as fh:
+        subsets = pickle.load(fh)
 
-    # # if you want to only do a few users
-    subset_users = ['fearless']#21]
-    ready_for_calibration_users = [x for x in ready_for_calibration_users if x[0] in subset_users]
-    print([x[0] for x in ready_for_calibration_users])
+    # select which subsets to calibrate
+    subset_ids = ['random','fearless','notfearless'] # or uuserid in string format
+    subsets = [x for x in subsets if x[0] in subset_ids]
+    print([x[0] for x in subsets])
 
     # Add users to the calibration list
-    all_calibrations = [{**calibration_dict,**{'user':user}} for user, calibration_dict in itertools.product(ready_for_calibration_users,all_calibrations)]
+    all_calibrations = [{**calibration_dict,**{'subset':subset}} for subset, calibration_dict in itertools.product(subsets,all_calibrations)]
     # END COMMENT BLOCK
 
     # Create a list of (script, run_num) pairs for NUM_RUNS
@@ -70,7 +53,7 @@ if __name__ == '__main__':
                 if result[1]:
                     print('Completed',result[0],'Remaining:',len(tasks)-idx+1,'Elapsed Time',elapsed_time)
                 else:
-                    print('Failed to complete',result[0],'Remaining:',len(tasks)-idx+1,'Elapsed Time',elapsed_time)
+                    print('Exceeded iterations',result[0],'Remaining:',len(tasks)-idx+1,'Elapsed Time',elapsed_time)
     except KeyboardInterrupt:
         print('\nExiting...')
 

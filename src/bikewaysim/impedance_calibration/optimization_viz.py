@@ -1,12 +1,6 @@
-'''
-Throwing in all my visualization code into this .py
-
-'''
-
-
 ########################################################################################
 
-# Visualization and QAQC Tools
+# Visualization Functions for Impedance Calibration
 
 ########################################################################################
 
@@ -16,9 +10,11 @@ from folium.plugins import MarkerCluster, PolyLineTextPath
 from folium.map import FeatureGroup
 from shapely.ops import Point, MultiLineString, LineString
 import branca
+import numpy as np
 
 from bikewaysim.paths import config
-from bikewaysim.impedance_calibration import stochastic_optimization
+from bikewaysim.impedance_calibration import stochastic_optimization, loss_functions
+from bikewaysim.routing import rustworkx_routing_funcs, route_utils
 
 def construct_line_dict(keys,result_dict,geo_dict):
     """
@@ -95,7 +91,7 @@ colorbrewer_hex = [colors.to_hex(c) for c in plt.get_cmap('Set2').colors]
 
 #TODO only take the four that have the best metric
 from collections import defaultdict
-def visualize_three(tripid,match_dict,modeled_dicts,calibration_dicts,geo_dict,coords_dict,crs,tile_info_dict,custom_route=None):
+def visualize_three(tripid,match_dict,modeled_dicts,calibration_dicts,geo_dict,coords_dict,crs,tile_info_dict,force_display,custom_route=None):
     '''
     Takes in a tripid, a dictionary of map matched and shortest routes, various modeled results, a dictionary
     with the link geometry, a dictionary with the simplified coordinates, and dict with information to retrieve
@@ -395,6 +391,68 @@ def format_qgis(qgis_export):
     other_modeled.to_file(config['calibration_fp']/'viz.gpkg',layer='other modeled')
     ods.to_file(config['calibration_fp']/'viz.gpkg',layer='ods')
     coords_gdf.to_file(config['calibration_fp']/'viz.gpkg',layer='coords')
+
+def create_custom_route(betas_tup,tripid,full_set,links,turns,turn_G,length_dict,geo_dict,base_impedance_col="travel_time_min",set_to_zero=['bike lane','cycletrack','multi use path'],set_to_inf = ['not_street']):
+    
+    one_set = {key:item for key,item in full_set.items() if key == tripid}
+
+    start, end, year = stochastic_optimization.match_results_to_ods_w_year(one_set)[0]
+
+    # create a copy of the network to modify
+    turn_G_copy = turn_G.copy()
+
+    # if infra is on street (i.e., the link is still traversable but the impedance doesn't apply)
+    links.loc[links['year'] > year,set_to_zero] = 0 
+    # if it's off-street then assign it a very high cost
+    links.loc[(links['year'] > year) & (links.loc[:,set_to_inf]==1).any(axis=1),'link_cost_override'] = True
+
+    # run network update
+    betas = [x['beta'] for x in betas_tup]
+    rustworkx_routing_funcs.impedance_update(
+        betas,betas_tup,
+        stochastic_optimization.link_impedance_function,
+        base_impedance_col,
+        stochastic_optimization.turn_impedance_function,
+        links,turns,turn_G_copy)
+            
+    # re-add virtual links
+    added_nodes = rustworkx_routing_funcs.add_virtual_edges([start],[end],links,turns,turn_G_copy)
+
+    # route
+    path_lengths, shortest_paths = rustworkx_routing_funcs.rx_shortest_paths((start,end),turn_G_copy)
+    rustworkx_routing_funcs.remove_virtual_links(added_nodes,turn_G_copy)
+
+    modeled = [list(x) for x in shortest_paths[0]]
+    chosen = one_set[tripid]['matched_edges'].values
+    shortest = one_set[tripid]['shortest_edges'].values
+    length = round(np.array([length_dict.get(tripid[0],0) for tripid in modeled]).sum()/5280,1)
+    detour = round(loss_functions.detour_factor(modeled,shortest,length_dict),2)
+    jaccard_exact_val = loss_functions.jaccard_exact(chosen,modeled,length_dict)
+    jaccard_exact_val = round(jaccard_exact_val[0] / jaccard_exact_val[1],2)
+    jaccard_buffer_val = loss_functions.jaccard_buffer(chosen,modeled,geo_dict)
+    jaccard_buffer_val = round(jaccard_buffer_val[0] / jaccard_buffer_val[1],2)
+
+    custom_route = gpd.GeoDataFrame(
+        data={'tripid':[tripid],
+            'length':length,
+            'detour':detour,
+            'jaccard_exact':jaccard_exact_val,
+            'jaccard_buffer':jaccard_buffer_val,
+            'geometry':LineString(route_utils.get_route_line(shortest_paths[0],geo_dict))
+            },
+        index=[0],
+        crs=links.crs
+    ).to_crs('epsg:4326').to_json()
+    color='yellow'
+    tooltip = folium.GeoJsonTooltip(fields= ['tripid','length','detour','jaccard_exact','jaccard_buffer'])
+    custom_route = folium.GeoJson(custom_route,name='Custom',
+                style_function=lambda x,
+                color=color: {'color': color, 'weight': 12, 'opacity':0.5},
+                tooltip=tooltip,
+                highlight_function=lambda x: {'color': color, 'weight': 20}
+                )
+    return custom_route
+
 
 #TODO add turns for these visuals
 # folium.GeoJson(

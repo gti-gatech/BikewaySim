@@ -175,6 +175,61 @@ def impedance_update(betas:np.array,betas_tup:tuple,
     updated_edge_costs = [((row[0],row[1]),(row[2],row[3]),row[4]) for row in turns[cols].values]
     updated_edge_costs = [(node_to_idx[x[0]],node_to_idx[x[1]],x[2]) for x in updated_edge_costs] 
 
+    # updates the edges
+    _ = [turn_G.update_edge(*x) for x in updated_edge_costs]
+
+    # TODO add virtual links
+
+    return updated_edge_costs
+
+def new_impedance_update(betas:np.array,betas_tup:tuple,
+                     link_impedance_function,
+                     base_impedance_col:str,
+                     turn_impedance_function,
+                     links:pd.DataFrame,turns:pd.DataFrame,
+                     turn_G:rx.PyDiGraph):
+    '''
+    This function takes in the betas, impedance functions, and network objects
+    and updates the network graph accordingly.
+
+    Need to think about how to incorporate infrastructure availability into this
+    '''
+    
+    #update link costs
+    link_impedance_function(betas, betas_tup, links, base_impedance_col)
+    
+    # override the cost with 9e9 if future off-street facility
+    # this effectively prevents routing w/o messing around with the network structure
+    links.loc[links['link_cost_override']==True,'link_cost'] = 9e9
+
+    #create cost dict
+    tuple_index = tuple(zip(links['linkid'],links['reverse_link']))
+    cost_dict = dict(zip(tuple_index,links['link_cost']))
+    
+    #costs are stored in the turn graph (only target matters, initial link cost is added during routing)
+    turns['target_link_cost'] = turns[['target_linkid','target_reverse_link']].apply(lambda x: cost_dict.get(tuple(x.values),False),axis=1)
+
+    #update turn costs
+    turn_impedance_function(betas, betas_tup, turns)
+
+    #cacluate new total cost
+    # TODO round these values because they don't need this many decimal points (usually in travel time)
+    turns['total_cost'] = (turns['target_link_cost'] + turns['turn_cost'])
+
+    if turns['total_cost'].isna().any():
+        raise Exception("There are nan edge costs, exiting")
+
+    #check for negative link impedance
+    if (links['link_cost'] < 0).any() | (turns['total_cost'] < 0).any():
+        return False
+
+    node_to_idx, _ = rx_conversion_helpers(turn_G)
+
+    #update turn network graph with final cost
+    cols = ['source_linkid','source_reverse_link','target_linkid','target_reverse_link','total_cost']
+    updated_edge_costs = [((row[0],row[1]),(row[2],row[3]),row[4]) for row in turns[cols].values]
+    updated_edge_costs = [(node_to_idx[x[0]],node_to_idx[x[1]],x[2]) for x in updated_edge_costs] 
+
     # update the added 
 
     # updates the edges
@@ -183,6 +238,8 @@ def impedance_update(betas:np.array,betas_tup:tuple,
     # TODO add virtual links
 
     return updated_edge_costs
+
+
 
 def back_to_base_impedance(link_impedance_col,links,turns,turn_G):
     '''
