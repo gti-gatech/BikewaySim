@@ -99,6 +99,8 @@ def jaccard_buffer_total(results_dict,match_results,geo_dict):
         #retrievs linkids in (linkid:int,reverse_link:boolean) format
         chosen = [tuple(row) for row in match_results[tripid]['matched_edges'].values]
         od = (item['origin_node'],item['destination_node'])
+        if results_dict.get(od) is None:
+            print('test')
         modeled = results_dict[od]['edge_list']
         loss_value = jaccard_buffer(chosen,modeled,geo_dict,buffer_ft=50)
         loss_values.append(loss_value)

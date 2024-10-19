@@ -51,9 +51,9 @@ if __name__ == '__main__':
             for idx, result in enumerate(executor.map(stochastic_optimization.run_calibration, tasks)):
                 elapsed_time = print_elapsed_time(time.time()-start_time)    
                 if result[1]:
-                    print('Completed',result[0],'Remaining:',len(tasks)-idx+1,'Elapsed Time',elapsed_time)
+                    print('Completed',result[0],'| Remaining:',len(tasks)-idx+1,'| Elapsed Time',elapsed_time)
                 else:
-                    print('Exceeded iterations',result[0],'Remaining:',len(tasks)-idx+1,'Elapsed Time',elapsed_time)
+                    print('Exceeded iterations',result[0],'| Remaining:',len(tasks)-idx+1,'| Elapsed Time',elapsed_time)
     except KeyboardInterrupt:
         print('\nExiting...')
 

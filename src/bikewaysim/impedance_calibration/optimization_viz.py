@@ -34,7 +34,7 @@ def construct_line_dict(keys,result_dict,geo_dict):
         
         line_dict[new_key] = {
             'links': result_dict[key].values,
-            'coords': stochastic_optimization.get_route_line(result_dict[key].values,geo_dict),
+            'coords': route_utils.get_route_line(result_dict[key].values,geo_dict),
         }
     return line_dict
 
@@ -46,16 +46,16 @@ def add_metrics_to_tooltip(line_dict,length_dict,geo_dict):
     chosen = line_dict['Chosen']['links']
     shortest = line_dict['Shortest']['links']
 
-    line_dict['Chosen']['detour_pct'] = stochastic_optimization.detour_factor(chosen,shortest,length_dict)
+    line_dict['Chosen']['detour_pct'] = loss_functions.detour_factor(chosen,shortest,length_dict)
 
     for key, item in line_dict.items():
         if key == 'Chosen':
             continue
         line = item['links']
-        line_dict[key]['jaccard index'] = round(stochastic_optimization.jaccard_exact(chosen,line,length_dict),3)
-        line_dict[key]['frechet_dist'] = round(stochastic_optimization.frechet_distance(chosen,line,geo_dict),3)
-        line_dict[key]['buffer_dist'] = round(stochastic_optimization.jaccard_buffer(chosen,line,geo_dict),3)
-        line_dict[key]['detour_pct'] = round(stochastic_optimization.detour_factor(line,shortest,length_dict),3)
+        line_dict[key]['jaccard index'] = round(loss_functions.jaccard_exact(chosen,line,length_dict),3)
+        line_dict[key]['frechet_dist'] = round(loss_functions.frechet_distance(chosen,line,geo_dict),3)
+        line_dict[key]['buffer_dist'] = round(loss_functions.jaccard_buffer(chosen,line,geo_dict),3)
+        line_dict[key]['detour_pct'] = round(loss_functions.detour_factor(line,shortest,length_dict),3)
 
     return line_dict
 
@@ -91,7 +91,7 @@ colorbrewer_hex = [colors.to_hex(c) for c in plt.get_cmap('Set2').colors]
 
 #TODO only take the four that have the best metric
 from collections import defaultdict
-def visualize_three(tripid,match_dict,modeled_dicts,calibration_dicts,geo_dict,coords_dict,crs,tile_info_dict,force_display,custom_route=None):
+def visualize_three(tripid,match_dict,modeled_dicts,calibration_dicts,geo_dict,coords_dict,crs,tile_info_dict,custom_route=None):
     '''
     Takes in a tripid, a dictionary of map matched and shortest routes, various modeled results, a dictionary
     with the link geometry, a dictionary with the simplified coordinates, and dict with information to retrieve
@@ -103,8 +103,8 @@ def visualize_three(tripid,match_dict,modeled_dicts,calibration_dicts,geo_dict,c
     # handle the chosen and the shortest (these should always by provided)
     chosen = match_dict[tripid]['matched_edges'].values
     shortest = match_dict[tripid]['shortest_edges'].values
-    chosen = stochastic_optimization.get_route_line(chosen,geo_dict)
-    shortest = stochastic_optimization.get_route_line(shortest,geo_dict)
+    chosen = route_utils.get_route_line(chosen,geo_dict)
+    shortest = route_utils.get_route_line(shortest,geo_dict)
     
     #get start/end and center from the chosen geometry
     line_geo = LineString(chosen)
@@ -195,7 +195,7 @@ def visualize_three(tripid,match_dict,modeled_dicts,calibration_dicts,geo_dict,c
         betas = {x['col']:x['beta'] for x in calibration_dicts[max_jaccard_exact]['betas_tup']}
         color = colorbrewer_hex[idx]
         modeled = modeled_dict['modeled_edges'].values
-        modeled = stochastic_optimization.get_route_line(modeled,geo_dict)
+        modeled = route_utils.get_route_line(modeled,geo_dict)
         modeled = gpd.GeoDataFrame(
             {'name':model_name,
                 'length':modeled_dict['modeled_length'],
@@ -229,7 +229,7 @@ def visualize_three(tripid,match_dict,modeled_dicts,calibration_dicts,geo_dict,c
         betas = {x['col']:x['beta'] for x in calibration_dicts[max_jaccard_exact]['betas_tup']}
         color = colorbrewer_hex[idx]
         modeled = modeled_dict['modeled_edges'].values
-        modeled = stochastic_optimization.get_route_line(modeled,geo_dict)
+        modeled = route_utils.get_route_line(modeled,geo_dict)
         modeled = gpd.GeoDataFrame(
             {'name':model_name,
                 'length':modeled_dict['modeled_length'],
@@ -261,7 +261,7 @@ def visualize_three(tripid,match_dict,modeled_dicts,calibration_dicts,geo_dict,c
         betas = {x['col']:x['beta'] for x in calibration_dicts[max_jaccard_exact]['betas_tup']}
         color = colorbrewer_hex[idx]
         modeled = modeled_dict['modeled_edges'].values
-        modeled = stochastic_optimization.get_route_line(modeled,geo_dict)
+        modeled = route_utils.get_route_line(modeled,geo_dict)
         modeled = gpd.GeoDataFrame(
             {'name':model_name,
                 'length':modeled_dict['modeled_length'],
@@ -295,7 +295,7 @@ def visualize_three(tripid,match_dict,modeled_dicts,calibration_dicts,geo_dict,c
   
         modeled = modeled_dict['modeled_edges'].values
         betas = {x['col']:x['beta'] for x in calibration_dicts[max_jaccard_exact]['betas_tup']}
-        modeled = stochastic_optimization.get_route_line(modeled,geo_dict)
+        modeled = route_utils.get_route_line(modeled,geo_dict)
         modeled = gpd.GeoDataFrame(
             {'name':model_name,
              'length':modeled_dict['modeled_length'],

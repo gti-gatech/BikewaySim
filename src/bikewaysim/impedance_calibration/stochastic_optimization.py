@@ -358,6 +358,11 @@ def full_impedance_calibration(
     with export_utils.uniquify(result_fp).open('wb') as fh:
         pickle.dump(calibration_result,fh)
 
+    if x.success:
+        return True
+    else:
+        return False
+
 # Helper function to unpack the dictionary and call example_function
 def run_calibration(task):
     task_dict, run_num, NUM_RUNS = task

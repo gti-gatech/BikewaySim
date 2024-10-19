@@ -99,7 +99,6 @@ def post_calibration_routing():
 
         # if the best is nan then skip
         if np.isnan(np.nanmin(result['past_vals'])):
-            print(result_fp.stem,'failed')
             continue
 
         full_set_subset = {tripid:item for tripid, item in full_set.items() if tripid in result['trips_calibrated']}
@@ -119,7 +118,7 @@ def post_calibration_routing():
             result['set_to_inf']
             )
         if results_dict is None:
-            print('error')
+            print('\n',result_fp.stem,'has negative link costs')
             continue
         
         with (config['calibration_fp'] / 'routing' / str(result_fp.stem + '.pkl')).open('wb') as fh:
@@ -149,7 +148,7 @@ def post_calibration_loss():
             continue
 
         # load the calibration result (has the estimated betas)
-        with (config['calibration_fp'] / 'result' / f"{loss_stem}.pkl").open('rb') as fh:
+        with (config['calibration_fp'] / 'results' / f"{loss_stem}.pkl").open('rb') as fh:
             result = pickle.load(fh)
 
         # subset to the trips used for calibration (in case there was some sort of subsetting)
@@ -218,13 +217,19 @@ def shortest_aggregated():
     # has all the shortest stats
     with (config['calibration_fp']/'ready_for_calibration_stats.pkl').open('rb') as fh:
         shortest = pickle.load(fh)
-    # has all the user and trip pairs
-    with (config['calibration_fp']/'subsets.pkl').open('rb') as fh:
-        subsets = pickle.load(fh)
-    subsets.append(('all',list(shortest.keys())))
+    
+    result_fps, routing_fps, loss_fps = export_utils.get_dirctories()
+    # # has all the user and trip pairs
+    # with (config['calibration_fp']/'subsets.pkl').open('rb') as fh:
+    #     subsets = pickle.load(fh)
+    # subsets.append(('all',list(shortest.keys())))
     aggregated_loss =[]
-    for subset, tripids in subsets:
-        
+    for result_fp in result_fps:
+        with result_fp.open('rb') as fh:
+            result = pickle.load(fh)
+        tripids = result['trips_calibrated']
+        name_params = export_utils.get_name_parameters(result_fp)
+
         subset_shortest = {key:item for key,item in shortest.items() if key in tripids}
 
         jaccard_exact_mean = np.array([item['shortest_jaccard_exact'] for tripid, item in subset_shortest.items()]).mean()
@@ -236,7 +241,7 @@ def shortest_aggregated():
         jaccard_buffer_total = jaccard_buffer_total[:,0].sum() / jaccard_buffer_total[:,1].sum()
         
         aggregated_loss.append({
-            'subset': subset,
+            **name_params,
             'jaccard_exact_mean': round(jaccard_exact_mean,2),
             'jaccard_exact_total': round(jaccard_exact_total,2),
             'jaccard_buffer_mean': round(jaccard_buffer_mean,2),

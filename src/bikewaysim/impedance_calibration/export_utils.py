@@ -26,7 +26,7 @@ def get_dirctories():
     result_fps = (config['calibration_fp'] / f"results").glob("*.pkl")
     routing_fps = (config['calibration_fp'] / f"routing").glob("*.pkl")
     loss_fps = (config['calibration_fp'] / f"loss").glob("*.pkl")
-    return result_fps, routing_fps, loss_fps
+    return list(result_fps), list(routing_fps), list(loss_fps)
 
 def get_name_parameters(fp):
     fp_split = fp.stem.split(',')
