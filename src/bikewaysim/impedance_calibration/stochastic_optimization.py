@@ -72,7 +72,7 @@ def match_results_to_ods_w_year(match_results):
 ########################################################################################
 
 import datetime
-#TODO rename variables like full_set to match_results or matched_traces, just develop some type of convention
+#TODO rename variables like match_results to match_results or matched_traces, just develop some type of convention
 
 def impedance_calibration(betas:np.array,
                           past_vals:list,
@@ -83,6 +83,7 @@ def impedance_calibration(betas:np.array,
                           match_results:dict,
                           link_impedance_function,
                           base_impedance_col:str,
+                          base_link_col:str, # NEW boolean column that specifies if a link should ONLY be assigned the base impedance
                           turn_impedance_function,
                           links:pd.DataFrame,turns:pd.DataFrame,turn_G,
                           loss_function,
@@ -90,16 +91,19 @@ def impedance_calibration(betas:np.array,
                           print_results=True,
                           track_calibration_results=True,
                           ):
-
+    '''
+    Function for stochopy.minimize
+    '''
     
     # start_time = time.time()
 
     # runs the shortest path routing part
-    results_dict = impedance_routing(
+    modeled_results = impedance_routing(
         betas,
         betas_tup,
         link_impedance_function,
         base_impedance_col,
+        base_link_col,
         turn_impedance_function,
         links,
         turns,
@@ -109,23 +113,26 @@ def impedance_calibration(betas:np.array,
         set_to_inf
         )
 
-    if results_dict is None:
+    # BREAK if negative edge weights found
+    if modeled_results is None:
         if print_results:
             print('negative edge weights, skipping guess')
         if track_calibration_results == True:
             past_vals.append(list(betas)+[np.nan])
+        return np.inf # np.nan test to see if this leads to different behavior
     
     #calculate the objective function
     #trim kwargs to only what's needed for the funtion 
     signature = inspect.signature(loss_function)
     arg_names = [param.name for param in signature.parameters.values()]
     loss_function_kwargs = {key:item for key,item in loss_function_kwargs.items() if key in arg_names}
-    val_to_minimize = loss_function(results_dict,match_results,**loss_function_kwargs)
+    val_to_minimize = loss_function(modeled_results,match_results,**loss_function_kwargs)
     
     if print_results:
         print(list(betas.round(2))+[np.round(val_to_minimize,2)])
 
     #keep track of all the past betas used for visualization purposes
+    #not sure what this means if run in parallel?
     if track_calibration_results == True:
         past_vals.append(list(betas)+[val_to_minimize])
     
@@ -137,6 +144,7 @@ def impedance_routing(
         betas_tup,
         link_impedance_function,
         base_impedance_col,
+        base_link_col,
         turn_impedance_function,
         links,
         turns,
@@ -146,7 +154,7 @@ def impedance_routing(
         set_to_inf
     ):
     '''
-    Function that performs the shortest path routing aspect of the impedance calibration
+    Function that performs the shortest path routing part of the impedance calibration
     '''
 
     # create a copy of links so the original isn't modified when the next 
@@ -162,6 +170,7 @@ def impedance_routing(
     updated_edge_costs = rustworkx_routing_funcs.impedance_update(betas,betas_tup,
                           link_impedance_function,
                           base_impedance_col,
+                          base_link_col,
                           turn_impedance_function,
                           links,turns,turn_G)
 
@@ -175,7 +184,15 @@ def impedance_routing(
     years = sorted(list(set([x[2] for x in ods])))[::-1]
 
     year_networks = rustworkx_routing_funcs.create_year_networks(
-        betas,betas_tup,starts,ends,turn_G,links,turns,set_to_zero,set_to_inf,years,link_impedance_function,turn_impedance_function,base_impedance_col
+        betas,betas_tup,
+        starts,ends,turn_G,
+        links,turns,
+        set_to_zero,set_to_inf,
+        years,
+        link_impedance_function,
+        turn_impedance_function,
+        base_impedance_col,
+        base_link_col
     )
     
     # second negative impedance check
@@ -189,12 +206,12 @@ def impedance_routing(
     path_lengths, shortest_paths = rustworkx_routing_funcs.rx_shortest_paths_year(ods,turn_G,year_networks)
     
     # format the output
-    results_dict = {(od[0],od[1]):{'length':path_length,'edge_list':shortest_path} for path_length, shortest_path, od in zip(path_lengths,shortest_paths,ods)}
+    modeled_results = {(od[0],od[1]):{'length':path_length,'edge_list':shortest_path} for path_length, shortest_path, od in zip(path_lengths,shortest_paths,ods)}
     
     # remove the virtual links for the next run
     rustworkx_routing_funcs.remove_virtual_links(added_nodes,turn_G)
 
-    return results_dict
+    return modeled_results
 
 ########################################################################################
 
@@ -209,7 +226,60 @@ cast into a different format for now.
 Link impedance is weighted by the length of the link, turns are just the impedance associated
 '''
 
-def link_impedance_function(betas:np.array,betas_tup:tuple,links:pd.DataFrame,base_impedance_col:str,trip_specific=None):
+
+def lowry_impedance_function(betas:np.array,betas_tup:tuple,links:pd.DataFrame,base_impedance_col:str,
+                             base_link_col:str=None,trip_specific=None):
+    '''
+    Inspired by Lowry et al. 2016
+
+    NOTE: attribute values are hard-coded for this one
+
+    Presence of a bike lane or cycletrack 
+
+    '''
+
+    # retrieve col names of the links and the positions in the betas array
+    betas_links = [(idx,x['col']) for idx, x in enumerate(betas_tup) if x['type']=='link']
+
+    # calculate the bike accomodation factor
+    bike_infra_cols = [x['col'] for x in betas_tup if x in ['bike lane','buffered bike lane','cycletrack']]
+    if len(bike_infra_cols) > 0:
+        f_bikeaccom = np.sum([betas_links[x] * links[x] for x in bike_infra_cols])
+    else:
+        f_bikeaccom = 0
+    
+    # calculate the road stress factor
+    # each category gets its own parameter
+    roadway_cols = [
+        '1lpd','2lpd','3+lpd',
+        '[0,30] mph','(30,inf) mph',
+        '[0k,4k) aadt','[4k,10k) aadt','[10k,inf) aadt'
+        ]
+    f_roadway = np.sum([betas_links[x] * links[x] for x in roadway_cols])
+    
+    # calcualte the grade factor
+    slope_cols = [x['col'] for x in betas_tup if x in ['[4,6) grade','[6,inf) grade']]
+    if len(slope_cols) > 0:
+        f_slope = np.sum([betas_links[x] * links[x] for x in slope_cols])
+
+    # calculate bicycle accomodation adjusted road stress factor
+    f_stress = f_roadway * (1 - f_bikeaccom)
+
+    # calculate the final edge weights
+    links['link_cost'] = links[base_impedance_col] * (1 + f_slope + f_stress)
+
+    # reset link impedance for links that represent the base case
+    # (in this case it should everything that is not a road)
+    base_link_col = 'base_link_col'
+    links[base_link_col] = links['link_type'] != 'road'
+    if base_link_col is not None:
+        links.loc[base_link_col,'link_cost'] = links.loc[base_link_col,base_impedance_col]
+    
+    # round link cost
+    links['link_cost'] = links['link_cost'].round(8)
+
+def link_impedance_function(betas:np.array,betas_tup:tuple,links:pd.DataFrame,base_impedance_col:str,
+                            base_link_col:str=None,trip_specific=None):
     '''
     Default link impedance function. Assumes that link impedance factors are additive
     and increase/decrease link impedance proportional to the link's distance/travel time.
@@ -232,7 +302,7 @@ def link_impedance_function(betas:np.array,betas_tup:tuple,links:pd.DataFrame,ba
         #assumes that these effects are additive
         for idx, col in betas_links:
             multiplier = multiplier + (betas[idx] * links[col].values)
-        #scale the multiplier
+        #scale the multiplier by a trip specific attribute such as distance or confident/fearless
         if trip_specific is not None:
             multiplier = multiplier * trip_specific
         #stores the multiplier
@@ -241,6 +311,10 @@ def link_impedance_function(betas:np.array,betas_tup:tuple,links:pd.DataFrame,ba
     else:
         print('No link impedance factors assigned')
         links['link_cost'] = links[base_impedance_col]
+
+    # reset link impedance for links that represent the base case
+    if base_link_col is not None:
+        links.loc[base_link_col,'link_cost'] = links.loc[base_link_col,base_impedance_col]
 
     # round link cost
     links['link_cost'] = links['link_cost'].round(8)
@@ -275,11 +349,14 @@ def full_impedance_calibration(
         calibration_name:str,
         betas_tup:tuple,
         objective_function=loss_functions.jaccard_buffer_mean,
+        link_impedance_function=link_impedance_function,
+        turn_impedance_function=turn_impedance_function,
         set_to_zero=[],
         set_to_inf=[],
         stochastic_optimization_settings={'method':'pso','options':{'maxiter':100,'popsize':25}},
         print_results = False, # default is false
         base_impedance_col='travel_time_min',
+        base_link_col=None,
         subset = None, # tuple with (userid/rider_type/etc,list_of_trips) to subset data (OPTIONAL)
         ):
     
@@ -298,11 +375,11 @@ def full_impedance_calibration(
 
     # import matched traces (all of them at first)
     with (config['calibration_fp']/'ready_for_calibration.pkl').open('rb') as fh:
-        full_set = pickle.load(fh)
+        match_results = pickle.load(fh)
 
     # subset to a user's trips if user argument is provided
     if subset is not None:
-        full_set = {tripid:item for tripid, item in full_set.items() if tripid in subset[1]}
+        match_results = {tripid:item for tripid, item in match_results.items() if tripid in subset[1]}
 
     # format arguments for impedance calibration
     args = (
@@ -310,10 +387,11 @@ def full_impedance_calibration(
         betas_tup, # tuple containing the impedance spec
         set_to_zero, # if the trip year exceeds the link year set these attributes to zero
         set_to_inf, # if the trip year exceeds the link year set the cost to 9e9
-        match_results_to_ods_w_year(full_set), # list of OD network node pairs needed for shortest path routing 
-        full_set, # dict containing the origin/dest node and map matched edges
+        match_results_to_ods_w_year(match_results), # list of OD network node pairs needed for shortest path routing 
+        match_results, # dict containing the origin/dest node and map matched edges
         link_impedance_function, # link impedance function to use
         base_impedance_col, # column with the base the base impedance in travel time or distance
+        base_link_col, # column that specifies whether a link should only be assigned the base impedance
         turn_impedance_function, # turn impedance function to use
         links,turns,turn_G, # network parts
         objective_function, # loss function to use
@@ -345,7 +423,7 @@ def full_impedance_calibration(
         'settings': stochastic_optimization_settings, # contains the optimization settings
         'objective_function': objective_function.__name__, # objective function used
         'results': x, # stochastic optimization outputs
-        'trips_calibrated': set(full_set.keys()), # saves which trips were calibrated
+        'trips_calibrated': set(match_results.keys()), # saves which trips were calibrated
         'past_vals': args[0], # all of the past values/guesses
         'runtime': datetime.timedelta(seconds= end - start),
         'time': datetime.datetime.now()

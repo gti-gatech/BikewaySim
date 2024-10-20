@@ -5,6 +5,11 @@ import pickle
 
 from bikewaysim.paths import config
 
+'''
+Contains all of the functions needed for shortest path routing and handling the turn network
+
+'''
+
 def import_calibration_network(config):
     '''
     Backend function for loading calibration network files
@@ -44,7 +49,7 @@ def make_turn_graph(turns):
 def rx_conversion_helpers(G_rx):
     '''
     NOTE: regenerate this everytime the nodes are added/removed from the graph
-    ONLY valid if data payloads are unique (they don't have to be in rustworkx)
+    ONLY valid if data node payloads are unique (they don't have to be in rustworkx)
     '''
     # create a dict for mapping back and forth (only valid if we're positive that each node value is unique)
     node_to_idx = dict(zip(G_rx.nodes(),G_rx.node_indices()))
@@ -81,6 +86,7 @@ def add_virtual_edges(starts,ends,links,turns,G_rx):
     return added_nodes # use this to remove virtual edges later on
 
 def remove_virtual_links(added_nodes,G_rx):
+    '''Removes the virtual links added'''
     G_rx.remove_nodes_from(added_nodes)
 
 def rx_shortest_paths(ods,G_rx):
@@ -107,7 +113,8 @@ def rx_shortest_paths(ods,G_rx):
 def rx_shortest_paths_year(ods,G_rx,G_rx_dict):
     '''
     Takes in a list of origin and destination nodes and find the shortest path according
-    to the set impedance. Can work on a set of ods or one at a time.
+    to the set impedance. Can work on a set of ods or one at a time. This version differese in that
+    it takes a dict of rustworkx pydigraphs that represent the network at different years.
 
     rustworkx version needs two dicts for converting back and forth between the node indces of the network graph
     and the (linkid,reverse_link) structure used in the 
@@ -118,10 +125,12 @@ def rx_shortest_paths_year(ods,G_rx,G_rx_dict):
     if isinstance(ods,tuple): # if there is only one od provided, convert to list
         ods = [ods]
 
+    # converts ods from osm node ids to nodeindeces used in rustworkx
     ods = [(node_to_idx[start],node_to_idx[end],year) for start, end, year in ods]
+    # find the shortest path for each od given the year
     results_rx = [rx.dijkstra_shortest_paths(G_rx_dict[year],start,end,weight_fn=float) for start, end, year in ods]
+    # coerces the data into a list of the route impedances and the edge list for the route taken
     shortest_paths = [[idx_to_node[x] for x in i[1:-1] if isinstance(idx_to_node[x],tuple)] for sublist in results_rx for i in sublist.values()]
-    # biggest one is this
     path_lengths = [np.sum([G_rx_dict[year[2]].get_edge_data(xy[0],xy[1]) for xy,year in zip(list(zip(unpacked,unpacked[1:])),ods)]) for path in results_rx for unpacked in [list(z) for z in path.values()]]
     
     return path_lengths, shortest_paths # these are lists of the results
@@ -139,7 +148,8 @@ def create_year_networks(
         years,
         link_impedance_function,
         turn_impedance_function,
-        base_impedance_col
+        base_impedance_col,
+        base_link_col
     ):
     '''
     Creates a dict of PyDigraphs based on the year
@@ -159,6 +169,7 @@ def create_year_networks(
         updated_edge_costs = impedance_update(betas,betas_tup,
                 link_impedance_function,
                 base_impedance_col,
+                base_link_col,
                 turn_impedance_function,
                 links,turns,turn_G_copy)
         # just incase a negative link cost appears as a result
@@ -176,6 +187,7 @@ def create_year_networks(
 def impedance_update(betas:np.array,betas_tup:tuple,
                      link_impedance_function,
                      base_impedance_col:str,
+                     base_link_col:str,
                      turn_impedance_function,
                      links:pd.DataFrame,turns:pd.DataFrame,
                      turn_G:rx.PyDiGraph):
@@ -186,8 +198,8 @@ def impedance_update(betas:np.array,betas_tup:tuple,
     Need to think about how to incorporate infrastructure availability into this
     '''
     
-    #update link costs
-    link_impedance_function(betas, betas_tup, links, base_impedance_col)
+    #update link costs using the link impedance function
+    link_impedance_function(betas, betas_tup, links, base_impedance_col, base_link_col) # would get an optional base impedance col
     
     # override the cost with 9e9 if future off-street facility
     # this effectively prevents routing w/o messing around with the network structure

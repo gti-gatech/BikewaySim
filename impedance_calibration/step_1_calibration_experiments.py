@@ -11,12 +11,11 @@ calibration attempts with the same name (e.g., adjusting the population size)
 
 # use this space to create variables that are going to be commonly used
 full_model = (
-    {'col':'2lpd','type':'link','range':[0,3]},
-    {'col':'3+lpd','type':'link','range':[0,3]},
-    {'col':'(30,inf) mph','type':'link','range':[0,3]},
-    # {'col':'(40,inf) mph','type':'link','range':[0,3]},
-    {'col':'[4k,10k) aadt','type':'link','range':[0,3]},
-    {'col':'[10k,inf) aadt','type':'link','range':[0,3]},
+    {'col':'2lpd','type':'link','range':[0,1]},
+    {'col':'3+lpd','type':'link','range':[0,1]},
+    {'col':'(30,inf) mph','type':'link','range':[0,1]},
+    {'col':'[4k,10k) aadt','type':'link','range':[0,1]},
+    {'col':'[10k,inf) aadt','type':'link','range':[0,1]},
     {'col':'[4,6) grade','type':'link','range':[0,3]},
     {'col':'[6,inf) grade','type':'link','range':[0,3]},
     {'col':'bike lane','type':'link','range':[-1,0]},
@@ -26,12 +25,40 @@ full_model = (
 )
 std_set_to_zero = ['bike lane','cycletrack','multi use path']
 std_set_to_inf = ['not_street']
+base_link_col = ['base0']
 
 break_stuff = ({'col':'bike lane','type':'link','range':[-1,5]},)
 
 # determine variables, impedance type, and search range
 # step_2_run_calibration.py will run all of the settings that are not commented out below
 all_calibrations = [
+    # do 
+    {
+        'calibration_name': 'cycletrack',
+        'betas_tup':  (
+            {'col':'2lpd','type':'link','range':[0,3]},
+            {'col':'3+lpd','type':'link','range':[0,3]},
+            {'col':'(30,inf) mph','type':'link','range':[0,3]},
+            # {'col':'(40,inf) mph','type':'link','range':[0,3]},
+            {'col':'[4k,10k) aadt','type':'link','range':[0,3]},
+            {'col':'[10k,inf) aadt','type':'link','range':[0,3]},
+            {'col':'[4,6) grade','type':'link','range':[0,3]},
+            {'col':'[6,inf) grade','type':'link','range':[0,3]},
+            {'col':'bike lane','type':'link','range':[-1,0]},
+            {'col':'multi use path and cycletrack','type':'link','range':[-1,0]},
+            # {'col':'multi use path','type':'link','range':[-1,0]},
+            {'col':'unsig_crossing','type':'turn','range':[0,2]},
+        ),
+        'set_to_zero': std_set_to_zero,
+        'set_to_inf': std_set_to_inf,
+        'objective_function': loss_functions.jaccard_buffer_mean,
+        'stochastic_optimization_settings': {'method':'pso','options':{'maxiter':100,'popsize':25},'constraints':'shrink'},
+    },
+    
+    
+    
+    
+    
     # {
     # 'calibration_name': 'rider_type',
     # 'betas_tup': full_model,
@@ -101,7 +128,7 @@ all_calibrations = [
         'set_to_zero': std_set_to_zero,
         'set_to_inf': std_set_to_inf,
         'objective_function': loss_functions.jaccard_buffer_mean,
-        'stochastic_optimization_settings': {'method':'pso','options':{'maxiter':100,'popsize':25}},
+        'stochastic_optimization_settings': {'method':'pso','options':{'maxiter':100,'popsize':25},'constraints':'shrink'},
     },
     # {
     #     'calibration_name': 'jaccard_buffer_mean',
