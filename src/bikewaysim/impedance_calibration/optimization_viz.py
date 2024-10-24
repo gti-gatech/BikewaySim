@@ -13,7 +13,7 @@ import branca
 import numpy as np
 
 from bikewaysim.paths import config
-from bikewaysim.impedance_calibration import stochastic_optimization, loss_functions
+from bikewaysim.impedance_calibration import stochastic_optimization, loss_functions, utils
 from bikewaysim.routing import rustworkx_routing_funcs, route_utils
 
 def construct_line_dict(keys,result_dict,geo_dict):
@@ -396,7 +396,7 @@ def create_custom_route(betas_tup,tripid,full_set,links,turns,turn_G,length_dict
     
     one_set = {key:item for key,item in full_set.items() if key == tripid}
 
-    start, end, year = stochastic_optimization.match_results_to_ods_w_year(one_set)[0]
+    start, end, year = utils.match_results_to_ods_w_year(one_set)[0]
 
     # create a copy of the network to modify
     turn_G_copy = turn_G.copy()

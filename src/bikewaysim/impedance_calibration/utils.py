@@ -1,5 +1,21 @@
 from bikewaysim.paths import config
 
+def extract_bounds(betas):
+    '''
+    For data wrangling
+    '''
+    return [x.get('range') for x in betas]
+
+#NOTE still not sure if this would be better to with the coordinates instead incase something gets removed
+def match_results_to_ods_w_year(match_results):  
+    #for the shortest path routing step, except this returns the year
+    ods = [(item['origin_node'],item['destination_node'],item['trip_start_time']) for key, item in match_results.items()]
+    #ensure that we don't repeat duplicate shortest path searches
+    ods = list(set(ods))
+    #sort it by year
+    ods = sorted(ods,key=lambda x:x[-1])[::-1]
+    return ods
+
 def handle_directories(subset,calibration_name):
     # handle the directories for exporting results
     if subset is not None:

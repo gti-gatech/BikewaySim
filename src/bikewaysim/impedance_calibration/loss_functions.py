@@ -203,8 +203,8 @@ def jaccard_buffer(chosen,other,geo_dict,buffer_ft=50):
 
 def detour_factor(chosen,shortest,length_dict):
 
-    chosen_length = [length_dict.get(linkid[0],False) for linkid in chosen]
-    shortest_length = [length_dict.get(linkid[0],False) for linkid in shortest]
+    chosen_length = [length_dict.get(linkid[0]) for linkid in chosen]
+    shortest_length = [length_dict.get(linkid[0]) for linkid in shortest]
 
     chosen_length = np.array(chosen_length).sum()
     shortest_length = np.array(shortest_length).sum()

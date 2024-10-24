@@ -39,6 +39,11 @@ if network_fp.exists() == False:
 if osmdwnld_fp.exists() == False:
     osmdwnld_fp.mkdir()
 
+if config['scratch_fp'].exists() == False:
+    config['scratch_fp'].mkdir()
+if config['figures_fp'].exists() == False:
+    config['figures_fp'].mkdir()
+
 #add to config
 config["bicycle_facilities_fp"] = bicycle_facilities_fp
 config["bikewaysim_fp"] = bikewaysim_fp
