@@ -38,10 +38,14 @@ def handle_directories(subset,calibration_name):
 
     return result_fp, routing_fp, loss_fp
 
-def get_dirctories():
+def get_directories(testing=False):
     result_fps = (config['calibration_fp'] / f"results").glob("*.pkl")
-    routing_fps = (config['calibration_fp'] / f"routing").glob("*.pkl")
-    loss_fps = (config['calibration_fp'] / f"loss").glob("*.pkl")
+    if testing:
+        routing_fps = (config['calibration_fp'] / "validation/routing").glob("*.pkl")
+        loss_fps = (config['calibration_fp'] / "validation/loss").glob("*.pkl")    
+    else:
+        routing_fps = (config['calibration_fp'] / f"routing").glob("*.pkl")
+        loss_fps = (config['calibration_fp'] / f"loss").glob("*.pkl")
     return list(result_fps), list(routing_fps), list(loss_fps)
 
 def get_name_parameters(fp):

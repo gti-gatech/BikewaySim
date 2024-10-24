@@ -74,7 +74,7 @@ def post_calibration_routing():
         match_results = pickle.load(fh)
     
     # get results filepaths
-    result_fps, routing_fps, loss_fps = utils.get_dirctories()
+    result_fps, routing_fps, loss_fps = utils.get_directories()
 
     for result_fp in tqdm(result_fps):
         # skip if it's already been calculated
@@ -138,7 +138,7 @@ def post_calibration_loss(rewrite=False):
         match_results = pickle.load(fh)
     
     # get results filepaths
-    result_fps, routing_fps, loss_fps = utils.get_dirctories()
+    result_fps, routing_fps, loss_fps = utils.get_directories()
 
     # cross reference result and routing
     results_stems = [x.stem for x in result_fps]
@@ -219,7 +219,7 @@ def metadata_dataframe():
     Returns dataframe with the runtime, optimization settings, and time of calibration
     '''
     
-    result_fps, routing_fps, loss_fps = utils.get_dirctories()
+    result_fps, routing_fps, loss_fps = utils.get_directories()
     
     meta_cols = ['set_to_zero','set_to_inf','objective_function','runtime','time']
 
@@ -249,7 +249,7 @@ def betas_dataframe():
     Returns dataframe of all the estimated coefficients in the columns where each row is a model
     '''
 
-    result_fps, routing_fps, loss_fps = utils.get_dirctories()
+    result_fps, routing_fps, loss_fps = utils.get_directories()
 
     beta_vals = []
     for result_fp in result_fps:
@@ -270,7 +270,7 @@ def aggregated_loss_dataframe():
     
     '''
     
-    result_fps, routing_fps, loss_fps = utils.get_dirctories()
+    result_fps, routing_fps, loss_fps = utils.get_directories()
 
     # disaggregated
     aggregated_loss = []
@@ -317,7 +317,7 @@ def shortest_aggregated_dataframe():
     with (config['calibration_fp']/'ready_for_calibration_stats.pkl').open('rb') as fh:
         shortest = pickle.load(fh)
     
-    result_fps, routing_fps, loss_fps = utils.get_dirctories()
+    result_fps, routing_fps, loss_fps = utils.get_directories()
     
     aggregated_loss =[]
     for result_fp in result_fps:
@@ -364,7 +364,7 @@ def post_calibration_disaggregate():
     Appends the shortest results to the left
     '''
 
-    result_fps, routing_fps, loss_fps = utils.get_dirctories()
+    result_fps, routing_fps, loss_fps = utils.get_directories()
     
     disaggregate_loss_stats = defaultdict(dict)
     for loss_fp in tqdm(loss_fps):
@@ -564,7 +564,52 @@ def validation_loss(model_fp,match_results_subset,length_dict,geo_dict):
         with (config['calibration_fp'] / f"validation/loss/{model_name}.pkl").open('wb') as fh:
             pickle.dump(loss_dict,fh)
 
+def testing_aggregated_loss_dataframe():
+    '''
+    Calculates aggregated loss stats for testing data.
 
+    Every row is a calibration result. If user/subset based, then every row is a calibration result for a user/subset.
+    
+    '''
+    
+    result_fps, routing_fps, loss_fps = utils.get_directories(testing=True)
+
+    # disaggregated
+    aggregated_loss = []
+    for loss_fp in loss_fps:
+        with loss_fp.open('rb') as fh:
+            loss_dict = pickle.load(fh)
+
+        jaccard_exact_mean = np.array([item['modeled_jaccard_exact'] for tripid, item in loss_dict.items()]).mean()
+        jaccard_exact_total = np.array([(item['modeled_jaccard_exact_intersection'],item['modeled_jaccard_exact_union']) for tripid, item in loss_dict.items()])
+        jaccard_exact_total = jaccard_exact_total[:,0].sum() / jaccard_exact_total[:,1].sum()
+
+        jaccard_buffer_mean = np.array([item['modeled_jaccard_buffer'] for tripid, item in loss_dict.items()]).mean()
+        jaccard_buffer_total = np.array([(item['modeled_jaccard_buffer_intersection'],item['modeled_jaccard_buffer_union']) for tripid, item in loss_dict.items()])
+        jaccard_buffer_total = jaccard_buffer_total[:,0].sum() / jaccard_buffer_total[:,1].sum()
+
+        name_params = utils.get_name_parameters(loss_fp)
+
+        aggregated_loss.append({
+            **name_params, # contains the userid, calibration name and run number
+            'jaccard_exact_mean': round(jaccard_exact_mean,2),
+            'jaccard_exact_total': round(jaccard_exact_total,2),
+            'jaccard_buffer_mean': round(jaccard_buffer_mean,2),
+            'jaccard_buffer_total': round(jaccard_buffer_total,2)
+        })
+    aggregated_loss = pd.DataFrame.from_records(aggregated_loss)
+
+    # attach the shortest results at end
+    shortest_aggregated_loss = shortest_aggregated_dataframe()
+    
+    # merge the two
+    shortest_aggregated_loss.set_index(['subset','calibration_name','run_num'],inplace=True)
+    shortest_aggregated_loss = shortest_aggregated_loss.add_prefix('shortest_')
+    aggregated_loss.set_index(['subset','calibration_name','run_num'],inplace=True)
+
+    aggregated_loss = pd.concat([aggregated_loss,shortest_aggregated_loss],ignore_index=False,axis=1).reset_index()
+
+    return aggregated_loss
 
 
 #### Utility functions ####
