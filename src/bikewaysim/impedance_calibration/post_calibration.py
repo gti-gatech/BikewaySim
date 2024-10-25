@@ -609,7 +609,7 @@ def testing_aggregated_loss_dataframe():
 
     aggregated_loss = pd.concat([aggregated_loss,shortest_aggregated_loss],ignore_index=False,axis=1).reset_index()
 
-    return aggregated_loss
+    return aggregated_loss.dropna()
 
 
 #### Utility functions ####
