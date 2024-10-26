@@ -28,8 +28,8 @@ if __name__ == '__main__':
 
     # NOTE comment out lines 41-53 to run calibration on all matched traces
     # Import subsets
-    with (config['calibration_fp']/'validation/training_folds.pkl').open('rb') as fh:
-        training_folds = pickle.load(fh)
+    # with (config['calibration_fp']/'validation/training_folds.pkl').open('rb') as fh:
+    #     training_folds = pickle.load(fh)
 
     with (config['calibration_fp']/'validation/bootstrap_samples.pkl').open('rb') as fh:
         bootstrap_samples = pickle.load(fh)
@@ -38,14 +38,19 @@ if __name__ == '__main__':
     # subset_ids = ['random'] # or uuserid in string format
     # subsets = [x for x in subsets if x[0] in subset_ids]
     # print([x[0] for x in subsets])
+    existing_runs = list((config['calibration_fp'] / 'results').glob('bootsample_*.pkl'))
+    existing_runs = [x.stem.split(',')[0] for x in existing_runs]
+    bootstrap_samples = [x for x in bootstrap_samples if x[0] not in existing_runs]
+    print(len(bootstrap_samples),'bootstrap runs remaining')
 
     all_calibrations = [x for x in all_calibrations if x['calibration_name'] == 'validation']
 
     # Add users to the calibration list
-    kfold_calibrations = [{**calibration_dict,**{'subset':subset}} for subset, calibration_dict in itertools.product(training_folds,all_calibrations)]
+    # kfold_calibrations = [{**calibration_dict,**{'subset':subset}} for subset, calibration_dict in itertools.product(training_folds,all_calibrations)]
     bootstrap_calibrations = [{**calibration_dict,**{'subset':subset}} for subset, calibration_dict in itertools.product(bootstrap_samples,all_calibrations)]
 
-    tasks = kfold_calibrations + bootstrap_calibrations
+    # tasks = kfold_calibrations + bootstrap_calibrations
+    tasks = bootstrap_calibrations
     
     # END COMMENT BLOCK
 
