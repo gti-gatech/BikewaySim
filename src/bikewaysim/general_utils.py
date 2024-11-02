@@ -17,3 +17,10 @@ def print_elapsed_time(seconds):
 
     # Return the formatted elapsed time
     return elapsed_time
+
+def chunks(l,n):
+    '''
+    Splits a list into groups of n for parallel processing operations
+    '''
+    n = max(1,n)
+    return (l[i:i+n] for i in range(0,len(l),n))

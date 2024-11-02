@@ -17,6 +17,7 @@ import time
 
 from scipy.spatial import cKDTree
 
+from bikewaysim.routing import rustworkx_routing_funcs
 
 #### R
 
@@ -52,6 +53,15 @@ def ckdnearest(gdA, gdB, return_dist=True):
         gdf = gdf.drop(columns=['dist'])
     
     return gdf
+
+from shapely.ops import Point
+def find_nearest_line(lonlat, lines, max_dist=100):  
+    lonlat = gpd.GeoDataFrame({'point_geometry':Point(lonlat)},geometry='point_geometry',index=[0],crs='epsg:4326')
+    lonlat.to_crs(lines.crs,inplace=True)
+    buffered_point = lonlat.buffer(max_dist).unary_union
+    possible_matches = lines[lines.geometry.intersects(buffered_point)]
+    gdf = ckdnearest(lonlat,possible_matches)
+    return [tuple(x) for x in gdf[['linkid','reverse_link']].values][0]
 
 ###### OD Snapping ######
 
@@ -92,14 +102,8 @@ def snap_ods_to_network(od_gdf:pd.DataFrame,nodes:gpd.GeoDataFrame,od_list=False
 
 
 ##### Shortest Path Routing ######
+# DEPRECATED USE THE RUSTWORKX FUNCTIONS INSTEAD
 
-
-
-
-
-
-
-    
 def create_graph(links,impedance_col):
     '''
     Creates weighted directed network graph
@@ -266,9 +270,41 @@ def impedance_change(imp,improved,tazs,impedance_col):
     return by_taz
 
 
+import rustworkx as rx
+def make_bikeshed_rx(coordinates,limit,lines,links,G,radius=100):
+    '''
+    Get the bikeshed for a given origin
+
+    Need to update this to work with the rustworkx graphs
+    '''
+
+    node_to_idx, idx_to_node = rustworkx_routing_funcs.rx_conversion_helpers(G)
+
+    closest_line = find_nearest_line(coordinates,lines)
+    start = node_to_idx[closest_line]
+    results_rx = rx.dijkstra_shortest_paths(G,start,weight_fn=float)
+    x = [(idx_to_node[x],np.sum([G.get_edge_data(x0,x1) for x0,x1 in zip(y,y[1:])])) for x, y in results_rx.items()]
+    # use this if using distance?
+    # x = [(idx_to_node[x],np.sum([cost_dict[idx_to_node[z][0]] for z in y]).round(2)) for x, y in results_rx.items()]
+    x = set([z[0][0] for z in x if z[1] < limit])
+    bikeshed = links.loc[links['linkid'].isin(x)]
+    
+    # length = bikeshed[bikeshed['linkid'].duplicated()==False].length.sum() / 5280
+    # area = bikeshed[bikeshed['linkid'].duplicated()==False].buffer(100).unary_union.area / 5280**2
+    
+    # # print(f'---{origin}---')
+    # print(f'Bikeshed Network Miles: {length:.1f}')
+    # print(f'Bikeshed Size (square miles w/{radius} ft access distance): {area:.2f}')    
+
+    return bikeshed#, bikeshed_node
+
+
+
 def make_bikeshed(links_c,nodes,origin,radius,buffer_size,impedance_col):
     '''
-    Get the bikeshed for an origin
+    Get the bikeshed for a given origin
+
+    Need to update this to work with the rustworkx graphs
     '''
 
     links = links_c.copy()

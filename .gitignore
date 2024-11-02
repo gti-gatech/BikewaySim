@@ -18,3 +18,4 @@ config.json
 **/cache/
 **/bikewaysim.egg-info/
 clear_outputs.py
+.vscode/launch.json

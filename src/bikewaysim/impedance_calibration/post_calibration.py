@@ -38,15 +38,15 @@ def shortest_loss():
 
         # add to full set in additon to what's already there
         match_results[key].update({
-            'chosen_length': round(np.array([length_dict.get(tripid[0],False) for tripid in chosen]).sum()/5280,2),
-            'shortest_length': round(np.array([length_dict.get(tripid[0],False) for tripid in shortest]).sum()/5280,2),
-            'chosen_detour': round(loss_functions.detour_factor(chosen,shortest,length_dict),2),
-            'shortest_jaccard_exact': round(shortest_jaccard_exact,2),
-            'shortest_jaccard_exact_intersection': round(shortest_jaccard_exact_intersection,2),
-            'shortest_jaccard_exact_union': round(shortest_jaccard_exact_union,2),
-            'shortest_jaccard_buffer': round(shortest_jaccard_buffer,2),
-            'shortest_jaccard_buffer_intersection': round(shortest_jaccard_buffer_intersection,2),
-            'shortest_jaccard_buffer_union': round(shortest_jaccard_buffer_union,2),
+            'chosen_length': round(np.array([length_dict.get(tripid[0],False) for tripid in chosen]).sum()/5280,4),
+            'shortest_length': round(np.array([length_dict.get(tripid[0],False) for tripid in shortest]).sum()/5280,4),
+            'chosen_detour': round(loss_functions.detour_factor(chosen,shortest,length_dict),4),
+            'shortest_jaccard_exact': round(shortest_jaccard_exact,4),
+            'shortest_jaccard_exact_intersection': round(shortest_jaccard_exact_intersection,4),
+            'shortest_jaccard_exact_union': round(shortest_jaccard_exact_union,4),
+            'shortest_jaccard_buffer': round(shortest_jaccard_buffer,4),
+            'shortest_jaccard_buffer_intersection': round(shortest_jaccard_buffer_intersection,4),
+            'shortest_jaccard_buffer_union': round(shortest_jaccard_buffer_union,4),
         })
 
     # export new version
@@ -189,13 +189,13 @@ def post_calibration_loss(rewrite=False):
             loss_dict[tripid] = {
                 'modeled_edges': pd.DataFrame(modeled,columns=['linkid','reverse_link']),
                 'modeled_length': round(np.array([length_dict.get(tripid[0],0) for tripid in modeled]).sum()/5280,1),
-                'modeled_detour': round(loss_functions.detour_factor(modeled,shortest,length_dict),2),
-                'modeled_jaccard_exact': round(modeled_jaccard_exact,2),
-                'modeled_jaccard_exact_intersection': round(modeled_jaccard_exact_intersection,2),
-                'modeled_jaccard_exact_union': round(modeled_jaccard_exact_union,2),
-                'modeled_jaccard_buffer': round(modeled_jaccard_buffer,2),
-                'modeled_jaccard_buffer_intersection': round(modeled_jaccard_buffer_intersection,2),
-                'modeled_jaccard_buffer_union': round(modeled_jaccard_buffer_union,2),
+                'modeled_detour': round(loss_functions.detour_factor(modeled,shortest,length_dict),4),
+                'modeled_jaccard_exact': round(modeled_jaccard_exact,4),
+                'modeled_jaccard_exact_intersection': round(modeled_jaccard_exact_intersection,4),
+                'modeled_jaccard_exact_union': round(modeled_jaccard_exact_union,4),
+                'modeled_jaccard_buffer': round(modeled_jaccard_buffer,4),
+                'modeled_jaccard_buffer_intersection': round(modeled_jaccard_buffer_intersection,4),
+                'modeled_jaccard_buffer_union': round(modeled_jaccard_buffer_union,4),
             }
         
         if skip:
@@ -290,10 +290,10 @@ def aggregated_loss_dataframe():
 
         aggregated_loss.append({
             **name_params, # contains the userid, calibration name and run number
-            'jaccard_exact_mean': round(jaccard_exact_mean,2),
-            'jaccard_exact_total': round(jaccard_exact_total,2),
-            'jaccard_buffer_mean': round(jaccard_buffer_mean,2),
-            'jaccard_buffer_total': round(jaccard_buffer_total,2)
+            'jaccard_exact_mean': round(jaccard_exact_mean,4),
+            'jaccard_exact_total': round(jaccard_exact_total,4),
+            'jaccard_buffer_mean': round(jaccard_buffer_mean,4),
+            'jaccard_buffer_total': round(jaccard_buffer_total,4)
         })
     aggregated_loss = pd.DataFrame.from_records(aggregated_loss)
 
@@ -338,10 +338,10 @@ def shortest_aggregated_dataframe():
         
         aggregated_loss.append({
             **name_params,
-            'jaccard_exact_mean': round(jaccard_exact_mean,2),
-            'jaccard_exact_total': round(jaccard_exact_total,2),
-            'jaccard_buffer_mean': round(jaccard_buffer_mean,2),
-            'jaccard_buffer_total': round(jaccard_buffer_total,2)
+            'jaccard_exact_mean': round(jaccard_exact_mean,4),
+            'jaccard_exact_total': round(jaccard_exact_total,4),
+            'jaccard_buffer_mean': round(jaccard_buffer_mean,4),
+            'jaccard_buffer_total': round(jaccard_buffer_total,4)
             })
     
     aggregated_loss = pd.DataFrame.from_records(aggregated_loss)
@@ -407,7 +407,6 @@ def shortest_disaggregate():
     shortest_disaggregate_loss_stats.index.name = 'tripid'
 
     return shortest_disaggregate_loss_stats
-
 
 ########################################################################################
 
@@ -546,13 +545,13 @@ def validation_loss(model_fp,match_results_subset,length_dict,geo_dict):
         loss_dict[tripid] = {
             'modeled_edges': pd.DataFrame(modeled,columns=['linkid','reverse_link']),
             'modeled_length': round(np.array([length_dict.get(tripid[0],0) for tripid in modeled]).sum()/5280,1),
-            'modeled_detour': round(loss_functions.detour_factor(modeled,shortest,length_dict),2),
-            'modeled_jaccard_exact': round(modeled_jaccard_exact,2),
-            'modeled_jaccard_exact_intersection': round(modeled_jaccard_exact_intersection,2),
-            'modeled_jaccard_exact_union': round(modeled_jaccard_exact_union,2),
-            'modeled_jaccard_buffer': round(modeled_jaccard_buffer,2),
-            'modeled_jaccard_buffer_intersection': round(modeled_jaccard_buffer_intersection,2),
-            'modeled_jaccard_buffer_union': round(modeled_jaccard_buffer_union,2),
+            'modeled_detour': round(loss_functions.detour_factor(modeled,shortest,length_dict),4),
+            'modeled_jaccard_exact': round(modeled_jaccard_exact,4),
+            'modeled_jaccard_exact_intersection': round(modeled_jaccard_exact_intersection,4),
+            'modeled_jaccard_exact_union': round(modeled_jaccard_exact_union,4),
+            'modeled_jaccard_buffer': round(modeled_jaccard_buffer,4),
+            'modeled_jaccard_buffer_intersection': round(modeled_jaccard_buffer_intersection,4),
+            'modeled_jaccard_buffer_union': round(modeled_jaccard_buffer_union,4),
         }
         
         if skip:
@@ -592,10 +591,10 @@ def testing_aggregated_loss_dataframe():
 
         aggregated_loss.append({
             **name_params, # contains the userid, calibration name and run number
-            'jaccard_exact_mean': round(jaccard_exact_mean,2),
-            'jaccard_exact_total': round(jaccard_exact_total,2),
-            'jaccard_buffer_mean': round(jaccard_buffer_mean,2),
-            'jaccard_buffer_total': round(jaccard_buffer_total,2)
+            'jaccard_exact_mean': round(jaccard_exact_mean,4),
+            'jaccard_exact_total': round(jaccard_exact_total,4),
+            'jaccard_buffer_mean': round(jaccard_buffer_mean,4),
+            'jaccard_buffer_total': round(jaccard_buffer_total,4)
         })
     aggregated_loss = pd.DataFrame.from_records(aggregated_loss)
 

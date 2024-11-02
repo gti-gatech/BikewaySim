@@ -201,6 +201,9 @@ def impedance_update(betas:np.array,betas_tup:tuple,
     #update link costs using the link impedance function
     link_impedance_function(betas, betas_tup, links, base_impedance_col, base_link_col) # would get an optional base impedance col
     
+    if 'link_cost_override' not in links.columns.tolist():
+        links['link_cost_override'] = False
+
     # override the cost with 9e9 if future off-street facility
     # this effectively prevents routing w/o messing around with the network structure
     links.loc[links['link_cost_override']==True,'link_cost'] = 9e9
@@ -259,6 +262,10 @@ def back_to_base_impedance(link_impedance_col,links,turns,turn_G):
     cols = ['source_linkid','source_reverse_link','target_linkid','target_reverse_link','total_cost']
     updated_edge_costs = [((row[0],row[1]),(row[2],row[3]),row[4]) for row in turns[cols].values]
     updated_edge_costs = [(node_to_idx[x[0]],node_to_idx[x[1]],x[2]) for x in updated_edge_costs] 
+
+    # updates the edges
+    _ = [turn_G.update_edge(*x) for x in updated_edge_costs]
+
 
 #figure out how to use the node indeces to update the costs for the starting connecting links
 
