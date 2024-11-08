@@ -289,12 +289,12 @@ def make_bikeshed_rx(coordinates,limit,lines,links,G,radius=100):
     x = set([z[0][0] for z in x if z[1] < limit])
     bikeshed = links.loc[links['linkid'].isin(x)]
     
-    # length = bikeshed[bikeshed['linkid'].duplicated()==False].length.sum() / 5280
-    # area = bikeshed[bikeshed['linkid'].duplicated()==False].buffer(100).unary_union.area / 5280**2
+    length = bikeshed[bikeshed['linkid'].duplicated()==False].length.sum() / 5280
+    area = bikeshed[bikeshed['linkid'].duplicated()==False].buffer(100).unary_union.area / 5280**2
     
     # # print(f'---{origin}---')
-    # print(f'Bikeshed Network Miles: {length:.1f}')
-    # print(f'Bikeshed Size (square miles w/{radius} ft access distance): {area:.2f}')    
+    print(f'Bikeshed Network Miles: {length:.1f}')
+    print(f'Bikeshed Size (square miles w/{radius} ft access distance): {area:.2f}')    
 
     return bikeshed#, bikeshed_node
 

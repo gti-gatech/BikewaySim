@@ -91,11 +91,15 @@ colorbrewer_hex = [colors.to_hex(c) for c in plt.get_cmap('Set2').colors]
 
 #TODO only take the four that have the best metric
 from collections import defaultdict
-def visualize_three(tripid,match_dict,modeled_dicts,calibration_dicts,geo_dict,coords_dict,crs,tile_info_dict,custom_route=None):
+def visualize_modeled(tripid,match_dict,modeled_dicts,calibration_dicts,geo_dict,coords_dict,crs,tile_info_dict,custom_route=None):
     '''
-    Takes in a tripid, a dictionary of map matched and shortest routes, various modeled results, a dictionary
-    with the link geometry, a dictionary with the simplified coordinates, and dict with information to retrieve
-    the correct tiles
+    Takes in a tripid, a dictionary with all the map matched and shortest routes,
+    a dictionary of dictionaries of all the modeled routes where the first dict is 
+    keyed by the model name and the next dictionary is keyed by the trips, a dictionary
+    of all of the models keyed by model name, a dictionary with the link geometry,
+    a dictionary with the simplified coordinates, and a dict with information to retrieve
+    the correct tiles, the last input is optional but let's you add a custom route in for
+    comparison.
     '''
 
     qgis_export = {}
@@ -178,8 +182,10 @@ def visualize_three(tripid,match_dict,modeled_dicts,calibration_dicts,geo_dict,c
     '''
     idx += 1
     
-    # add the modeled to folium
+    # subset to models that contain the the trip
     subset = {model_name:modeled_dict[tripid] for model_name, modeled_dict in modeled_dicts.items() if modeled_dict.get(tripid) is not None}
+    if len(subset) == 0:
+        return 'Trip not in provided modeled routes dictionary'
 
     #find max jaccard exact and buffer (i.e. the best match)
     max_jaccard_exact = {model_name:item['modeled_jaccard_exact'] for model_name, item in subset.items()}
@@ -289,7 +295,7 @@ def visualize_three(tripid,match_dict,modeled_dicts,calibration_dicts,geo_dict,c
         idx += 1
 
     # add the rest of the modeled results as a feature group
-    modeled_fg = folium.FeatureGroup(name=f"All Modeled (N={len(modeled_dict)})",show=False)
+    modeled_fg = folium.FeatureGroup(name=f"All Modeled (N={len(subset)})",show=False)
     color = colorbrewer_hex[idx]
     for model_name, modeled_dict in subset.items():
   
