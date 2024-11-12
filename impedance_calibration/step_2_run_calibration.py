@@ -14,8 +14,8 @@ if __name__ == '__main__':
     
     start_time = time.time()
     
-    NUM_RUNS = 2 # Number of times to run each calibration
-    MAX_WORKERS = 8 # For my machine this takes about ~70% CPU and ~80% Memory
+    NUM_RUNS = 1 # Number of times to run each calibration
+    MAX_WORKERS = 4 # For my machine this takes about ~70% CPU and ~80% Memory
     
     print('Found these calibration settings:')
     print([x['calibration_name'] for x in all_calibrations])
@@ -27,7 +27,7 @@ if __name__ == '__main__':
         subsets = pickle.load(fh)
 
     # select which subsets to calibrate
-    subset_ids = ['random'] # or uuserid in string format
+    subset_ids = ['random'] # or userid in string format
     subsets = [x for x in subsets if x[0] in subset_ids]
     print([x[0] for x in subsets])
 

@@ -33,15 +33,15 @@ When paired with BikewaySim's bicycle facility assessment framework (Figure 2), 
 1. Finding the least impedance route for selected or all-to-all O-D pairs given calibrated or custom link and turn impedance functions using [NetworkX](https://github.com/networkx/networkx)
 1. Using results to generate several metrics for assessing the impacts of planned cycling facilities
 
-## Install instructions:
-- Asssumes that you have [conda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html) and [git](https://git-scm.com/downloads) installed for your system already
+## Installation:
+- Asssumes that you have [conda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html) and [git](https://git-scm.com/downloads) installed for your machine already
 - Clone the repository (and the transit-routing submodule) into your desired directory
 ```
 git clone --recurse-submodules -j8 https://github.com/reidx19/BikewayDev 
 ```
 - Create a new conda environment named `bikewaysim` using the `environment.yml` file (make sure that you're in the directory with the .yml file)
 ```
-conda env create -n bikewaysim environment.yml
+conda env create -f environment.yml
 ```
 - Activate the 'bikewaysim' environment
 ```
@@ -52,11 +52,11 @@ conda activate bikewaysim
 pip install -e .
 ```
 - Great! Everything should be installed!
-- Most of the code is excuted through Jupyter Notebooks which can be opened/run/edited through [VS Code](https://code.visualstudio.com/) or [Jupyter Notebook](https://anaconda.org/anaconda/jupyter), just make sure the `bikewaysim` environment is activated.
+- Most of the code is executed through Jupyter Notebooks which can be opened/run/edited through [VS Code](https://code.visualstudio.com/) or [Jupyter Notebook](https://anaconda.org/anaconda/jupyter), just make sure the `bikewaysim` environment is activated.
 
 ## How to Run
 1. Modify the [config.json](config.json) file to define the project directory and various settings (e.g., desired projected coordinate system, supplemental data directories, etc.).
-1. Create a new study area in GIS or [bounding box](https://boundingbox.klokantech.com) or provide an existing one. Save in `.geojson`, `.gpkg`, or `.shp` format.
+1. Create a new study area using GIS or [bounding box](https://boundingbox.klokantech.com) or provide an existing one. Must be in `.geojson`, `.gpkg`, or `.shp` format.
 1. Download OpenStreetMap network data using [Step_0_Process_OSM.ipynb](./network/Step_0_Process_OSM.ipynb).
 
 ## Quick Start Bike Routing
