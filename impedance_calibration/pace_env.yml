@@ -1,0 +1,10 @@
+name: bikewaysim_pace
+channels:
+  - conda-forge
+dependencies:
+  - geopandas
+  - pip
+  - tqdm
+  - pip:
+      - rustworkx
+      - stochopy
