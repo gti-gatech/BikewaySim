@@ -97,7 +97,7 @@ def rx_shortest_paths(ods,G_rx):
     rustworkx version needs two dicts for converting back and forth between the node indces of the network graph
     and the (linkid,reverse_link) structure used in the 
     '''
-    
+
     node_to_idx, idx_to_node = rx_conversion_helpers(G_rx)
 
     if isinstance(ods,tuple): # if there is only one od provided, convert to list
@@ -105,10 +105,15 @@ def rx_shortest_paths(ods,G_rx):
 
     ods = [(node_to_idx[start],node_to_idx[end]) for start, end in ods]
     results_rx = [rx.dijkstra_shortest_paths(G_rx,start,end,weight_fn=float) for start, end in ods]
+
+    # remove failed ods (shortcut)
+    final_ods_idx = [idx for idx, x in enumerate(results_rx) if len(dict(x).keys()) > 0]
+
+    # issue is here, when we're unpacking results, if the value is empty, then it's not returned?
     shortest_paths = [[idx_to_node[x] for x in i[1:-1] if isinstance(idx_to_node[x],tuple)] for sublist in results_rx for i in sublist.values()]
     path_lengths = [np.sum([G_rx.get_edge_data(x,y) for x,y in list(zip(unpacked,unpacked[1:]))]) for path in results_rx for unpacked in [list(z) for z in path.values()]]
     
-    return path_lengths, shortest_paths # these are lists of the results
+    return final_ods_idx, path_lengths, shortest_paths # these are lists of the results
 
 def rx_shortest_paths_year(ods,G_rx,G_rx_dict):
     '''
