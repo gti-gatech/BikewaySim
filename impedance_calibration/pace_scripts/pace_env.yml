@@ -5,6 +5,8 @@ dependencies:
   - geopandas
   - pip
   - tqdm
+  - pyprojroot
   - pip:
       - rustworkx
       - stochopy
+      - similaritymeasures
