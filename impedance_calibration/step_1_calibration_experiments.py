@@ -59,9 +59,18 @@ break_stuff = ({'col':'bike lane','type':'link','range':[-1,5]},)
 # step_2_run_calibration.py will run all of the settings that are not commented out below
 all_calibrations = [
     # try out the different loss functions
+    # {
+    #     'calibration_name': 'validation',
+    #     'betas_tup': model3,
+    #     'set_to_zero': std_set_to_zero,
+    #     'set_to_inf': std_set_to_inf,
+    #     'objective_function': loss_functions.jaccard_buffer_mean,
+    #     'overwrite': True,
+    #     'stochastic_optimization_settings': {'method':'pso','options':{'maxiter':10,'popsize':25,'return_all':True,'ftol':-0.65}}
+    # },
     {
-        'calibration_name': 'validation',
-        'betas_tup': model3,
+        'calibration_name': 'traffic_test',
+        'betas_tup': full_model,
         'set_to_zero': std_set_to_zero,
         'set_to_inf': std_set_to_inf,
         'objective_function': loss_functions.jaccard_buffer_mean,

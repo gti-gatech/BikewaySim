@@ -4,21 +4,18 @@ import itertools
 import time
 
 from bikewaysim.paths import config
-from bikewaysim.impedance_calibration import stochastic_optimization
+from bikewaysim.impedance_calibration import stochastic_optimization, loss_functions
 from bikewaysim.general_utils import print_elapsed_time
-
-#NOTE relative import, do not move this file from the directory
-from step_1_calibration_experiments import all_calibrations
 
 if __name__ == '__main__':
     
     start_time = time.time()
     
-    NUM_RUNS = 4 # Number of times to run each calibration
-    MAX_WORKERS = 4 # For my machine this takes about ~70% CPU and ~80% Memory
+    NUM_RUNS = 2 # Number of times to run each calibration
+    MAX_WORKERS = 2 # For my machine this takes about ~70% CPU and ~80% Memory
     
     print('Found these calibration settings:')
-    print([x['calibration_name'] for x in all_calibrations])
+    # print([x['calibration_name'] for x in all_calibrations])
     print('Running each calibration',NUM_RUNS,'times')
 
     # NOTE comment out lines 41-53 to run calibration on all matched traces
@@ -30,6 +27,29 @@ if __name__ == '__main__':
     subset_ids = ['random'] # or userid in string format
     subsets = [x for x in subsets if x[0] in subset_ids]
     print([x[0] for x in subsets])
+
+    # model settings placeholder
+    all_calibrations = [ {
+        'calibration_name': 'pace',    
+        'betas_tup': (
+            {'col':'2lpd','type':'link','range':[0,3]},
+            {'col':'3+lpd','type':'link','range':[0,3]},
+            {'col':'(30,inf) mph','type':'link','range':[0,3]},
+            {'col':'[4,6) grade','type':'link','range':[0,3]},
+            {'col':'[6,inf) grade','type':'link','range':[0,3]},
+            {'col':'bike lane','type':'link','range':[-1,3]},
+            {'col':'multi use path and cycletrack','type':'link','range':[-1,3]},
+            {'col':'unsig_crossing','type':'turn','range':[0,5]},
+            {'col':'left_turn','type':'turn','range':[0,5]},
+            {'col':'right_turn','type':'turn','range':[0,5]}
+        ),
+        'set_to_zero': ['bike lane','cycletrack','multi use path'],
+        'set_to_inf': ['not_street'],
+        'objective_function': loss_functions.jaccard_buffer_mean,
+        'stochastic_optimization_settings': {'method':'pso','options':{'maxiter':3,'popsize':4,'xtol':0.05,'ftol':-0.75,'return_all':True}},
+        'print_results': True,
+        'subset': subsets[0]
+    } ]
 
     # Add users to the calibration list
     all_calibrations = [{**calibration_dict,**{'subset':subset}} for subset, calibration_dict in itertools.product(subsets,all_calibrations)]
@@ -45,7 +65,6 @@ if __name__ == '__main__':
     '''
     Look at the number of iterations vs overlap to see if it's pretty clear on whether were trapped at a local minimum or not
     '''
-
     try:
         with concurrent.futures.ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
             for idx, result in enumerate(executor.map(stochastic_optimization.run_calibration, tasks)):
