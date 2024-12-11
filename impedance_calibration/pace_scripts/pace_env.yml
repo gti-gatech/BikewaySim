@@ -10,3 +10,4 @@ dependencies:
       - rustworkx
       - stochopy
       - similaritymeasures
+      - pyprojroot

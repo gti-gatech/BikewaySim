@@ -10,7 +10,7 @@ dependencies:
   - folium
   - geopandas
   - ipykernel
-  #- osmium-tool
+  #- osmium-tool # this didn't play well an can be installed seperately
   - osmnx
   - pip
   - python
@@ -21,3 +21,4 @@ dependencies:
       - rustworkx
       - similaritymeasures
       - stochopy
+      - leuvenmapmatching
