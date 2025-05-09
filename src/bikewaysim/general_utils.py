@@ -1,4 +1,9 @@
 # General utility functions that can be use across the project
+from shapely.geometry import Polygon, box
+import pandas as pd
+import geopandas as gpd
+import numpy as np
+from scipy.spatial import cKDTree
 
 def print_elapsed_time(seconds):
     # Round the total seconds at the start
@@ -24,3 +29,72 @@ def chunks(l,n):
     '''
     n = max(1,n)
     return (l[i:i+n] for i in range(0,len(l),n))
+
+def bbox_to_gdf(input:list):
+    """
+    Converts a bounding box in GeoJSON format from https://boundingbox.klokantech.com
+    """
+    
+    input = input[0]
+    polygon = Polygon([tuple(i) for i in input])
+    gdf = gpd.GeoDataFrame(index=[0], crs='epsg:4326', geometry=[polygon])
+
+    # [[[-85.0782381338,32.3978375774],[-84.9093067807,32.3978375774],[-84.9093067807,32.5314503075],[-85.0782381338,32.5314503075],[-85.0782381338,32.3978375774]]]
+    
+    return gdf
+
+def bounds_to_polygon(gdf):
+    """
+    Converts the total bounds of a GeoDataFrame into a Polygon.
+    
+    Parameters:
+    gdf (GeoDataFrame): The GeoDataFrame whose total bounds will be converted.
+    
+    Returns:
+    Polygon: A Polygon representing the total bounds of the GeoDataFrame.
+    """
+    minx, miny, maxx, maxy = gdf.total_bounds
+    return Polygon([(minx, miny), (minx, maxy), (maxx, maxy), (maxx, miny), (minx, miny)])
+
+def ckdnearest(gdA, gdB, return_dist=True):  
+    """
+    Take in two geometry columns and find nearest gdB point from each
+    point in gdA. Returns the matching distance too.
+    
+    MUST BE PROJECTED COORDINATE SYSTEM
+    """
+    nA = np.array(list(gdA.geometry.apply(lambda x: (x.x, x.y))))
+    nB = np.array(list(gdB.geometry.apply(lambda x: (x.x, x.y))))
+    btree = cKDTree(nB)
+    dist, idx = btree.query(nA, k=1)
+    gdB_nearest = gdB.iloc[idx].reset_index(drop=True)
+    
+    gdf = pd.concat(
+        [
+            gdA.reset_index(drop=True),
+            gdB_nearest,
+            pd.Series(dist, name='dist')
+        ], 
+        axis=1)
+    
+    if return_dist == False:
+        gdf = gdf.drop(columns=['dist'])
+    
+    return gdf
+
+def create_grid(gdf,cell_size_mi):
+    '''
+    Turns a gdf into a grid. Assumes a projected coordinate system in feet.
+    '''
+    
+    cell_size_ft = cell_size_mi * 5280
+    xmin, ymin, xmax, ymax = gdf.total_bounds
+    grid_cells = []
+
+    for x0 in np.arange(xmin, xmax+cell_size_ft, cell_size_ft):
+        for y0 in np.arange(ymin, ymax+cell_size_ft, cell_size_ft):
+            x1 = x0 - cell_size_ft
+            y1 = y0 + cell_size_ft
+            grid_cells.append(box(x0,y0,x1,y1))
+    cell = gpd.GeoDataFrame(grid_cells,columns=['geometry'],crs=gdf.crs)
+    return cell

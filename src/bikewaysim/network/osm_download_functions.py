@@ -9,7 +9,7 @@ import requests
 import geopandas as gpd
 import pandas as pd
 import osmnx as ox
-import pickle
+from tqdm import tqdm
 import numpy as np
 from bs4 import BeautifulSoup
 from shapely.ops import LineString, Point
@@ -46,10 +46,17 @@ def download_geofabrik(states,year,export_fp):
         print(url)
         with requests.get(url, stream=True) as response:
             response.raise_for_status()  # Check for HTTP errors
-            with export_fp0.open("wb") as file:
+            total_size = int(response.headers.get('content-length', 0))
+            with export_fp0.open("wb") as file, tqdm(
+                desc=export_fp0.name,
+                total=total_size,
+                unit='iB',
+                unit_scale=True,
+                unit_divisor=1024,
+            ) as bar:
                 for chunk in response.iter_content(chunk_size=8192):  # Download in chunks
-                    file.write(chunk)   
-        #TODO add a wait time here so we don't look like a bot
+                    size = file.write(chunk)
+                    bar.update(size) 
 
 def download_osm(studyarea_or_bbox,crs,network_type='bike'):
     '''

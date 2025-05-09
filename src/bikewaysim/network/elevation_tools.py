@@ -82,6 +82,20 @@ def download_with_retry(url,MAX_RETRIES,RETRY_DELAY):
 
 
 def get_bridge_decks(lidar_urls):
+    '''
+    Processes a list of LiDAR URLs to identify and extract bridge deck points.
+    This function downloads LiDAR data from the provided URLs, checks for the presence
+    of bridge deck points (classification code 17), and compiles these points into a 
+    GeoDataFrame with their corresponding elevations.
+    
+    Parameters:
+    lidar_urls (list of str): List of URLs pointing to LiDAR data files.
+    
+    Returns:
+    geopandas.GeoDataFrame or None: A GeoDataFrame containing the geometry and elevation 
+    of bridge deck points if any are found, otherwise None.    
+    '''
+    
     bridge_decks = []
     
     for i, lidar_url in enumerate(lidar_urls):
@@ -167,27 +181,50 @@ def get_dem_urls(gdf):
 
     Note that you will 
     '''
-    gdf_coords = list(gdf.unary_union.envelope.exterior.coords)
+    gdf_coords = list(gdf.union_all().envelope.exterior.coords)
     gdf_coords = [f"{round(lon,4)}%20{round(lat,4)}" for lon, lat in gdf_coords]
     gdf_coords = ','.join(gdf_coords)
-    url = f"https://tnmaccess.nationalmap.gov/api/v1/products?polygon={gdf_coords}&datasets=Digital%20Elevation%20Model%20%28DEM%29%201%20meter&prodExtents=&prodFormats=GeoTIFF&outputFormat=JSON"
+    url = f"https://tnmaccess.nationalmap.gov/api/v1/products?polygon={gdf_coords}&datasets=Digital%20Elevation%20Model%20%28DEM%29%201%20meter&prodExtents=&prodFormats=GeoTIFF&outputFormat=JSON&max=10000"
     response = requests.get(url).json()['items']
     #urls = [item['downloadURL'] for item in response if 'Statewide' in item['downloadURL']]
     urls = [item['downloadURL'] for item in response]
     return urls, response
 
-def get_lidar_urls(gdf):
+from bikewaysim import general_utils
+def get_lidar_urls(gdf,cell_size_mi=3):
     '''
     Accepts a geodataframe and returns USGS LiDAR LAZ download links
-    that touch the unary union + envelope of the geodataframe
+    that touch the unary union + envelope of the geodataframe.
+
+    Uses grids (3 square miles by default to query TNM API to get around the max record limit)
     '''
-    gdf_coords = list(gdf.unary_union.envelope.exterior.coords)
-    gdf_coords = [f"{round(lon,4)}%20{round(lat,4)}" for lon, lat in gdf_coords]
-    gdf_coords = ','.join(gdf_coords)
-    url = f"https://tnmaccess.nationalmap.gov/api/v1/products?polygon={gdf_coords}&datasets=Lidar%20Point%20Cloud%20(LPC)&prodFormats=LAS,LAZ"
-    response = requests.get(url).json()['items']
-    urls = [item['downloadURL'] for item in response]
-    return urls
+    # get bounding coordinates of gdf and create a grid
+    gdf_coords = list(gdf.union_all().envelope.exterior.coords)
+    cells = general_utils.create_grid(gdf,cell_size_mi)
+    cells.to_crs('epsg:4326',inplace=True)
+    
+    # use grid to get the lidar LAZ urls from USGS TNM
+    items = []
+    for geom in tqdm(cells.geometry):    
+        geom_coords = list(geom.exterior.coords)
+        geom_coords = [f"{round(lon,4)}%20{round(lat,4)}" for lon, lat in geom_coords]
+        geom_coords = ','.join(geom_coords)
+        url = f"https://tnmaccess.nationalmap.gov/api/v1/products?polygon={geom_coords}&datasets=Lidar%20Point%20Cloud%20(LPC)&prodFormats=LAS,LAZ&max=10000"
+        response = download_with_retry(url,5,2)
+        json_response = response.json()
+        items.append(json_response)
+    
+    # process the results
+    lidar_urls = []
+    for item in items:
+        if item['total'] == 0:
+            continue
+        x = [(y['title'],y['downloadLazURL']) for y in item['items']]
+        
+        # retrieve only the title and the url
+        lidar_urls += x
+
+    return list(set(lidar_urls))
 
 def download_dem(urls,output_fp):
 
@@ -382,8 +419,7 @@ def visualize(links,
               list_of_linkids,
               grade_threshold,
               export_filepath,
-              maptilerapikey,
-              one_off=False,lidar=False,smoothed=False):
+              one_off=False):
     '''
     # Visualization Function
     This function takes a list of linkids and accesses items from interpolated_points_dict to make a plot showing
@@ -521,8 +557,8 @@ def visualize(links,
         ax3.set_axis_off()
 
         #since we switched data source, let cx figure out the zoom level
-        cx.add_basemap(ax2,source=cx.providers.MapTiler.Satellite(key=maptilerapikey),crs=dem_crs,alpha=0.5)
-        cx.add_basemap(ax3,source=cx.providers.MapTiler.Streets(key=maptilerapikey),crs=dem_crs)
+        cx.add_basemap(ax2,source=cx.providers.Esri.WorldImagery,crs=dem_crs,alpha=0.5)
+        cx.add_basemap(ax3,source=cx.providers.Esri.WorldTopoMap,crs=dem_crs)
 
         #maybe if we wanted a high res version of this later
         #https://stackoverflow.com/questions/42483449/mapbox-gl-js-export-map-to-png-or-pdf

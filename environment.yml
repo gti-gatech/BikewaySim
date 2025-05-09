@@ -1,22 +1,24 @@
 name: bikewaysim
 channels:
-  - anaconda
   - conda-forge
-  - defaults
 dependencies:
-  - beautifulsoup4
-  - branca
-  - contextily
-  - folium
-  - geopandas
-  - ipykernel
-  #- osmium-tool # this didn't play well an can be installed seperately
   - osmnx
-  - pip
-  - python
+  - pandas
+  - geopandas
+  - numpy
+  - matplotlib
+  - pyprojroot
   - scikit-learn
   - scipy
   - tqdm
+  - beautifulsoup4 # for getting the timestamp of the geofabrik extract
+  - branca # for legends
+  - contextily
+  - ipykernel # needed for running jupyter notebooks
+  - osmium-tool # needed for processing osm extracts
+  - laspy # needed for point cloud processing
+  - lazrs-python # needed for point cloud processing
+  - pip
   - pip:
       - rustworkx
       - similaritymeasures

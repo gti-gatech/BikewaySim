@@ -1,5 +1,5 @@
 # BikewaySim
-BikewaySim is a collection of open-source scripts and notebooks for helping cities, DOTs, MPOs, and/or advocacy groups assess the connectivity impacts of new cycling facilities (bike lanes and cycletracks) through change in cycling impedance.
+BikewaySim is a collection of open-source scripts and notebooks for helping cities, DOTs, MPOs, and/or advocacy groups assess the connectivity/bikeability impacts of new cycling facilities (bike lanes and cycletracks) through change in cycling impedance.
  
 Cycling impedance measures the relative difficulty of cycling from point A to point B considering travel time, elevation/hills, exposure to automobile traffic, the presence of bicycle facilities, and other preferences that cyclists have for road attributes.
 
@@ -67,16 +67,26 @@ conda activate bikewaysim
 ```
 pip install -e .
 ```
-- Great! The main things should be installed! If you're having troubles with creating the environment, open the `environment.yml` and try installing the packages one at a time instead in a new environment instead.
+- Great! The main things should be installed! If you're having troubles with creating the environment, open the `environment.yml` and try installing the packages one at a time in a new environment instead.
 - Most of the code is executed through Jupyter Notebooks which can be opened/run/edited through [VS Code](https://code.visualstudio.com/) or [Jupyter Notebook](https://anaconda.org/anaconda/jupyter), just make sure the `bikewaysim` environment is activated.
 
-## How to Run
+## Initial Setup
 1. Create a [config.json](config.json) file to define the project directory and various settings (e.g., desired projected coordinate system, supplemental data directories, etc.). See `example_config.json` for a template.
 1. Create a new study area using GIS or [bounding box](https://boundingbox.klokantech.com) or provide an existing one. Must be in `.geojson`, `.gpkg`, or `.shp` format.
-1. Download OpenStreetMap network data using [Step_0_Process_OSM.ipynb](./network/Step_0_Process_OSM.ipynb).
+
+## Creating a Network
+1. Download OpenStreetMap network data using [step_0_download_process_osm.ipynb](./network/step_0_download_process_osm.ipynb)
+1. Continue running through each `.ipynb` file in the `network` module in order until [step_8_export_network.ipynb](./network/step_8_export_network.ipynb)
+
+
+
+
+
+
+
 
 ## Quick Start Bike Routing
-1. Continue running through each .ipynb file in the network module in order
+
 1. Use the bicycle facilities module to add in bicycle facilities from other data sources and OpenStreetMap
 1. Run the notebooks in the [bikewaysim_framework](./bikewaysim_framework/) module to route cycling trips using default or custom impedance factors
 

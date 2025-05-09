@@ -8,44 +8,13 @@ Created on Thu Jun 17 13:22:22 2021
 #%%import cell
 import geopandas as gpd
 import pandas as pd
-pd.options.mode.chained_assignment = None  # default='warn' #get rid of copy warning
 import numpy as np
-#np.warnings.filterwarnings('ignore', category=np.VisibleDeprecationWarning)  
 import time
-from shapely.geometry import Point, box
+from shapely.geometry import Point
 from pathlib import Path
-import contextily as cx
-import fiona
-import warnings
 import pickle
-from scipy.spatial import cKDTree
 
-# Suppress the shapely warning (not working)
-warnings.filterwarnings("ignore", category=DeprecationWarning)
-
-#take in two geometry columns and find nearest gdB point from each
-#point in gdA. Returns the matching distance too.
-#MUST BE PROJECTED COORDINATE SYSTEM
-def ckdnearest(gdA, gdB, return_dist=True):  
-    
-    nA = np.array(list(gdA.geometry.apply(lambda x: (x.x, x.y))))
-    nB = np.array(list(gdB.geometry.apply(lambda x: (x.x, x.y))))
-    btree = cKDTree(nB)
-    dist, idx = btree.query(nA, k=1)
-    gdB_nearest = gdB.iloc[idx].reset_index(drop=True)
-    
-    gdf = pd.concat(
-        [
-            gdA.reset_index(drop=True),
-            gdB_nearest,
-            pd.Series(dist, name='dist')
-        ], 
-        axis=1)
-    
-    if return_dist == False:
-        gdf = gdf.drop(columns=['dist'])
-    
-    return gdf
+from bikewaysim import general_utils
 
 def snap_to_network(to_snap,network_nodes_raw):
     #record the starting time
@@ -61,7 +30,7 @@ def snap_to_network(to_snap,network_nodes_raw):
     network_nodes.set_geometry('snapped',inplace=True)
     
     #find closest network node from each orig/dest
-    snapped_nodes = ckdnearest(to_snap, network_nodes)
+    snapped_nodes = general_utils.ckdnearest(to_snap, network_nodes)
 
     #filter columns
     snapped_nodes = snapped_nodes[to_snap.columns.to_list()+['N','dist']]
@@ -98,7 +67,6 @@ def filter_networks(settings:dict,network_dict:dict):
     This function runs all the other functions in this file. It takes in two settings dictionaries.
 
     settings:
-
 
     network_dict:
     
@@ -173,9 +141,7 @@ def network_import(settings:dict,network_dict:dict):
 def filter_to_general(settings:dict,network_dict:dict):
     
     '''
-    This first filter function removes links
-    that are not legally traversable by bike
-    (e.g., Interstates, sidewalks, private drives)
+    This function is used to filter a network to a study area and create a nodes layer if one is not provided.
     '''
 
     network_name = network_dict['network_name']
@@ -201,15 +167,15 @@ def filter_to_general(settings:dict,network_dict:dict):
             network_dict['linkid'] = None
             
     if network_dict['linkid'] is not None:
-        links.rename(columns={network_dict['linkid']:f'{network_name}_linkid'},inplace=True)
+        links.rename(columns={network_dict['linkid']:f'linkid'},inplace=True)
     else:
         print('Generating unique link ids.')
         # if network_dict.get('former_linkid',0) != 0:
         #     # encoded_linkids = [encode_linkid(*tuple(x)) for x in links[[f"{network_name}_A",f"{network_name}_B",network_dict['former_linkid']]].values]
-        #     links[f'{network_name}_linkid'] = links.reset_index()
+        #     links[f'linkid'] = links.reset_index()
         # else:
         links.reset_index(inplace=True)
-        links.rename(columns={'index':f'{network_name}_linkid'},inplace=True)
+        links.rename(columns={'index':f'linkid'},inplace=True)
 
     return links, nodes
 
@@ -295,13 +261,13 @@ def creating_nodes(links:gpd.GeoDataFrame,settings:dict,network_dict:dict):
         #check if there is a node id column
         if nodeid_check is None:
             print('Setting index as the node IDs.')
-            nodes[f'{network_name}_N'] = nodes.index
+            nodes['N'] = nodes.index
         else:
-            nodes.rename(columns={nodes_id:f'{network_name}_N'},inplace=True)
+            nodes.rename(columns={nodes_id:'N'},inplace=True)
 
         if a_and_b:
             print("and links and nodes have reference ids.")
-            links.rename(columns={A:f'{network_name}_A',B:f'{network_name}_B'},inplace=True)
+            links.rename(columns={A:'A',B:'B'},inplace=True)
         else:
             print('but no reference ids for links.')
             links = add_ref_ids(links,nodes,network_name)
@@ -311,8 +277,8 @@ def creating_nodes(links:gpd.GeoDataFrame,settings:dict,network_dict:dict):
         print('no nodes layer')
         if a_and_b:
             print('but links have reference ids')
-            links.rename(columns={A:f'{network_name}_A',B:f'{network_name}_B'},inplace=True)
-            nodes = make_nodes_refid(links,network_name)
+            links.rename(columns={A:'A',B:'B'},inplace=True)
+            nodes = make_nodes_refid(links)
         else:
             print('and links dont have reference ids')
             nodes = make_nodes(links,network_name)
@@ -381,7 +347,7 @@ def add_ref_ids(links,nodes,network_name):
     for_matching.set_geometry('pt_geometry',inplace=True)
     for_matching.drop(columns='geometry',inplace=True)
     #find nearest node from starting node and add to column
-    links[f'{network_name}_A'] = ckdnearest(for_matching,nodes,return_dist=False)[f'{network_name}_N']
+    links['A'] = general_utils.ckdnearest(for_matching,nodes,return_dist=False)['N']
 
     #repeat for end point
     for_matching = links.copy()
@@ -390,35 +356,35 @@ def add_ref_ids(links,nodes,network_name):
     for_matching.set_geometry('pt_geometry',inplace=True)
     for_matching.drop(columns='geometry',inplace=True)
     #find nearest node from starting node and add to column
-    links[f'{network_name}_B'] = ckdnearest(for_matching,nodes,return_dist=False)[f'{network_name}_N']
+    links['B'] = general_utils.ckdnearest(for_matching,nodes,return_dist=False)['N']
 
     #check for missing reference ids
-    if links[f'{network_name}_A'].isnull().any() | links[f'{network_name}_B'].isnull().any():
+    if links['A'].isnull().any() | links['B'].isnull().any():
         print("There are missing reference ids")
     else:
         print("Reference IDs successfully added to links.")
     return links
 
-def make_nodes_refid(links, network_name): 
+def make_nodes_refid(links): 
     '''
-    This function creates a nodes layer from links with reference ids.
+    This function creates a nodes layer from links with reference ids labeled as 'A' and 'B'
     '''
     #starting point
     nodes_A = links.copy()
     nodes_A.geometry = nodes_A.apply(start_node_geo,geom='geometry',axis=1)
-    nodes_A = nodes_A[[f'{network_name}_A','geometry']]
-    nodes_A.rename(columns={f'{network_name}_A':f'{network_name}_N'},inplace=True)
+    nodes_A = nodes_A[['A','geometry']]
+    nodes_A.rename(columns={'A':'N'},inplace=True)
     #ending point
     nodes_B = links.copy()
     nodes_B.geometry = nodes_B.apply(end_node_geo,geom='geometry',axis=1)
-    nodes_B = nodes_B[[f'{network_name}_B','geometry']]
-    nodes_B.rename(columns={f'{network_name}_B':f'{network_name}_N'},inplace=True)
+    nodes_B = nodes_B[['B','geometry']]
+    nodes_B.rename(columns={'B':'N'},inplace=True)
 
     #append
     nodes = pd.concat([nodes_A,nodes_B],ignore_index=True)
 
     #drop duplicates
-    nodes.drop_duplicates(subset=[f'{network_name}_N'],inplace=True)
+    nodes.drop_duplicates(subset=['N'],inplace=True)
 
     return nodes
 
@@ -438,7 +404,7 @@ def make_nodes(links, network_name):
     nodes.drop_duplicates(inplace=True)
 
     #turn into dataframe and assign node ids in sequential order
-    nodes = pd.DataFrame({f'{network_name}_N':range(0,len(nodes)),'geometry':nodes})
+    nodes = pd.DataFrame({'N':range(0,len(nodes)),'geometry':nodes})
     
     #turn the WKT coordinates into points
     nodes['geometry'] = nodes.apply(lambda row: Point([row['geometry']]), axis=1)
@@ -450,8 +416,8 @@ def make_nodes(links, network_name):
 
 def filter_nodes(links,nodes,network_name):
     #remove nodes that aren't in the filtered links
-    nodes_in = set(pd.concat([links[f'{network_name}_A'],links[f'{network_name}_B']],ignore_index=True))
-    nodes_filt = nodes[nodes[f'{network_name}_N'].isin(nodes_in)]
+    nodes_in = set(pd.concat([links['A'],links['B']],ignore_index=True))
+    nodes_filt = nodes[nodes['N'].isin(nodes_in)]
     return nodes_filt
 
 def export(links,nodes,network_name,settings,network_dict,cols):
@@ -462,10 +428,10 @@ def export(links,nodes,network_name,settings,network_dict,cols):
     '''
     start = time.time()
     #remove excess columns?
-    links_cols_to_keep = [f'{network_name}_A',f'{network_name}_B',f'{network_name}_linkid','oneway','link_type','geometry'] + cols
+    links_cols_to_keep = ['A','B',f'linkid','oneway','link_type','geometry'] + cols
     if network_dict.get("former_linkid",0) != 0:
         links_cols_to_keep.append(network_dict['former_linkid'])
-    nodes_cols_to_keep = [f'{network_name}_N','geometry']
+    nodes_cols_to_keep = ['N','geometry']
     links = links[links_cols_to_keep]
     nodes = nodes[nodes_cols_to_keep]
     #export
@@ -484,9 +450,6 @@ def summary(settings):
     #summary table
     #can add other metrics of interest in the future
     summary_table = pd.DataFrame(columns=['num_links','num_nodes','tot_link_length','avg_link_length'])
-    
-    #expected link types
-    layers = fiona.listlayers(settings['project_filepath']/ 'filtered.gpkg')
 
     #remove node layers
     layers = [x for x in layers if 'node' not in x]
@@ -502,7 +465,7 @@ def summary(settings):
         num_links = len(links)
     
         #how many nodes
-        nodes = pd.concat([links[f'{network_name}_A'],links[f'{network_name}_B']],ignore_index=True)
+        nodes = pd.concat([links['A'],links['B']],ignore_index=True)
         num_nodes = len(nodes.unique())
 
         #total length
@@ -519,6 +482,3 @@ def summary(settings):
     summary_table.to_csv(settings['project_filepath']/ "network_summary.csv")
    
     print(summary_table)
-
-
-# %%

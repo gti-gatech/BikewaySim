@@ -18,6 +18,7 @@ import time
 from scipy.spatial import cKDTree
 
 from bikewaysim.routing import rustworkx_routing_funcs
+from bikewaysim import general_utils
 
 #### R
 
@@ -30,29 +31,6 @@ Re-structuring this to account for the new process
 
 ###### Helper Functions ######
 
-#take in two geometry columns and find nearest gdB point from each
-#point in gdA. Returns the matching distance too.
-#MUST BE A PROJECTED COORDINATE SYSTEM
-def ckdnearest(gdA, gdB, return_dist=True):  
-    
-    nA = np.array(list(gdA.geometry.apply(lambda x: (x.x, x.y))))
-    nB = np.array(list(gdB.geometry.apply(lambda x: (x.x, x.y))))
-    btree = cKDTree(nB)
-    dist, idx = btree.query(nA, k=1)
-    gdB_nearest = gdB.iloc[idx].reset_index(drop=True)
-    
-    gdf = pd.concat(
-        [
-            gdA.reset_index(drop=True),
-            gdB_nearest,
-            pd.Series(dist, name='dist')
-        ], 
-        axis=1)
-    
-    if return_dist == False:
-        gdf = gdf.drop(columns=['dist'])
-    
-    return gdf
 
 from shapely.ops import Point
 def find_nearest_line(lonlat, lines, max_dist=100):  
@@ -60,7 +38,7 @@ def find_nearest_line(lonlat, lines, max_dist=100):
     lonlat.to_crs(lines.crs,inplace=True)
     buffered_point = lonlat.buffer(max_dist).unary_union
     possible_matches = lines[lines.geometry.intersects(buffered_point)]
-    gdf = ckdnearest(lonlat,possible_matches)
+    gdf = general_utils.ckdnearest(lonlat,possible_matches)
     return [tuple(x) for x in gdf[['linkid','reverse_link']].values][0]
 
 ###### OD Snapping ######
@@ -91,7 +69,7 @@ def snap_ods_to_network(od_gdf:pd.DataFrame,nodes:gpd.GeoDataFrame,od_list=False
     od_gdf.rename(columns={'geometry':'od_geometry'},inplace=True)
 
     # find closest node
-    closest_node = ckdnearest(od_gdf, nodes)
+    closest_node = general_utils.ckdnearest(od_gdf, nodes)
 
     # drop the centroid geo and other geo
     closest_node.drop(columns=['centroid_geo','geometry'],inplace=True)

@@ -36,8 +36,6 @@ if matching_fp.exists() == False:
     matching_fp.mkdir()
 if network_fp.exists() == False:
     network_fp.mkdir()
-if osmdwnld_fp.exists() == False:
-    osmdwnld_fp.mkdir()
 
 if config['scratch_fp'].exists() == False:
     config['scratch_fp'].mkdir()
@@ -51,16 +49,16 @@ config["calibration_fp"] = calibration_fp
 config["cycleatl_fp"] = cycleatl_fp
 config["matching_fp"] = matching_fp
 config["network_fp"] = network_fp
-config["osmdwnld_fp"] = osmdwnld_fp
 
-#tiles config for folium
-stadia_toner = {
-    "tiles": 'https://tiles.stadiamaps.com/tiles/stamen_toner_lite/{z}/{x}/{y}{r}.png' + f"?api_key={config['stadiaapikey']}",
-    "name": 'Stamen Toner',
-    "attr": xyz.Stadia.StamenToner.attribution
-}
-maptiler_streets = {
-    "tiles": xyz.MapTiler.Streets.build_url(key=config['maptilerapikey']),
-    "name": str.replace(xyz.MapTiler.Streets.name,'.',' '),
-    "attr": xyz.MapTiler.Streets.attribution
-}
+# TODO figure out how to deal with base maps
+# #tiles config for folium
+# stadia_toner = {
+#     "tiles": 'https://tiles.stadiamaps.com/tiles/stamen_toner_lite/{z}/{x}/{y}{r}.png' + f"?api_key={config['stadiaapikey']}",
+#     "name": 'Stamen Toner',
+#     "attr": xyz.Stadia.StamenToner.attribution
+# }
+# maptiler_streets = {
+#     "tiles": xyz.MapTiler.Streets.build_url(key=config['maptilerapikey']),
+#     "name": str.replace(xyz.MapTiler.Streets.name,'.',' '),
+#     "attr": xyz.MapTiler.Streets.attribution
+# }
