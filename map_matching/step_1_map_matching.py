@@ -14,6 +14,16 @@ from bikewaysim.map_matching import map_match
 from bikewaysim.network import prepare_network
 from bikewaysim.general_utils import print_elapsed_time
 
+# import network
+with (config['matching_fp'] / 'map_con.pkl').open('rb') as fh:
+    exploded_links, exploded_nodes = pickle.load(fh)
+map_con = map_match.make_network(exploded_links,exploded_nodes)
+
+# import the match settings
+# NOTE why is this a tuple?
+with (config['matching_fp']/'match_settings.pkl').open('rb') as fh:
+    matching_settings = pickle.load(fh)[1]
+
 def batch_run_map_match(idx):
     with (config['matching_fp'] / f'coords_dict_{idx}.pkl').open('rb') as fh:
         coords_dict = pickle.load(fh)
@@ -25,21 +35,14 @@ def batch_run_map_match(idx):
         pickle.dump(match_dict,fh)
 
 if __name__ == '__main__':
+    
     start_time = time.time()
     
-    # import network
-    with (config['matching_fp'] / 'map_con.pkl').open('rb') as fh:
-        exploded_links, exploded_nodes = pickle.load(fh)
-    map_con = map_match.make_network(exploded_links,exploded_nodes)
-    
-    # import the match settings
-    with (config['matching_fp']/'match_settings.pkl').open('rb') as fh:
-        matching_settings = pickle.load(fh)
-
     # figure out how many splits there were
-    coords_dict_fps = (config['matching_fp'] / f'coords_dict_').glob('*.pkl')
-    tasks = [int(x.split('_')[-1]) for x in coords_dict_fps]
-
+    # NOTE: this is so the exported file numbers match
+    coords_dict_fps = config['matching_fp'].glob('coords_dict_*.pkl')
+    tasks = [int(str(x).split('_')[-1].split(".")[0]) for x in coords_dict_fps]
+    
     try:
         with concurrent.futures.ProcessPoolExecutor() as executor:
             for result in executor.map(batch_run_map_match, tasks):

@@ -4,6 +4,8 @@ channels:
 dependencies:
   - osmnx
   - pandas
+  - pyarrow
+  - fastparquet
   - geopandas
   - numpy
   - matplotlib
@@ -24,3 +26,4 @@ dependencies:
       - similaritymeasures
       - stochopy
       - leuvenmapmatching
+      - rtree

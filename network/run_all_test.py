@@ -1,28 +1,22 @@
-import nbformat
-from nbconvert import ExecutePreprocessor
-import os
+from pathlib import Path
 
-def run_notebook(notebook_path, timeout=600, kernel_name='python3'):
-    """Runs a Jupyter Notebook without saving the output."""
-    with open(notebook_path, 'r', encoding='utf-8') as f:
-        notebook = nbformat.read(f, as_version=4)
-    
-    executor = ExecutePreprocessor(timeout=timeout, kernel_name=kernel_name)
-    executor.preprocess(notebook, {'metadata': {'path': os.path.dirname(notebook_path)}})
-    
-    print(f"Executed {notebook_path}")
-
-def run_notebooks_in_order(notebook_list):
-    """Runs a list of Jupyter notebooks sequentially."""
-    for notebook in notebook_list:
-        run_notebook(notebook)
-
+from bikewaysim.general_utils import run_notebooks_in_order
 if __name__ == "__main__":
+    dir = Path.cwd() / "network"
     notebooks = [
-        "step_0_download_process_osm.ipynb",
-        "step_1_network_filtering.ipynb",
-        "step_2_network_reconciliation.ipynb",
-        "step_3_add_signals.ipynb"
-        "step_4_bicycle.ipynb"
+        # "step_0_download_process_osm.ipynb",
+        # "step_1_network_filtering.ipynb",
+        # "step_2_network_reconciliation.ipynb",
+        "step_3_add_signals.ipynb",
+        # "step_4_bicycle_facilities/step_0_osm_bike_facilities.ipynb",
+        # "step_4_bicycle_facilities/step_1_other_bike_facilities.ipynb",
+        # "step_4_bicycle_facilities/step_2_bicycle_facilities_reconciliation.ipynb",
+        # "step_4_bicycle_facilities/step_3_planned_facilities.ipynb"
+        # "step_5_network_modifications.ipynb",
+        # "step_6_elevation/step_1_add_elevation.ipynb",
+        # "step_6_elevation/step_2_sample_bridge_decks.ipynb",
+        # "step_6_elevation/step_3_elevation_cleaning.ipynb",
+        # "step_6_elevation/step_4_interpolate_elevation.ipynb",
+        "step_7_export_network.ipynb"
     ]
-    run_notebooks_in_order(notebooks)
+    run_notebooks_in_order(notebooks,dir)

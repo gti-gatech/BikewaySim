@@ -4,6 +4,31 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 from scipy.spatial import cKDTree
+import nbformat
+from nbconvert.preprocessors import ExecutePreprocessor
+import os
+
+
+# TODO throw this in utils
+def run_notebook(notebook_path, timeout=600, kernel_name='python3'):
+    """Runs a Jupyter Notebook without saving the output."""
+    with open(notebook_path, 'r', encoding='utf-8') as f:
+        notebook = nbformat.read(f, as_version=4)
+    
+    executor = ExecutePreprocessor(timeout=timeout, kernel_name=kernel_name)
+    executor.preprocess(notebook, {'metadata': {'path': os.path.dirname(notebook_path)}})
+    
+    # Optionally save the executed notebook
+    with open(notebook_path, "w") as f:
+        nbformat.write(notebook, f)
+
+    print(f"Executed {notebook_path.name}")
+
+def run_notebooks_in_order(notebook_list,dir):
+    """Runs a list of Jupyter notebooks sequentially."""
+    for notebook in notebook_list:
+        run_notebook(dir/notebook)
+
 
 def print_elapsed_time(seconds):
     # Round the total seconds at the start

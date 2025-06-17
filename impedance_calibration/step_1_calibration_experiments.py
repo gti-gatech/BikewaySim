@@ -3,7 +3,7 @@ from bikewaysim.impedance_calibration import stochastic_optimization, loss_funct
 '''
 This script is for feeding in different calibration settings.
 
-All calibrations is list of dicts. Each calibration result should have a name
+All calibrations are list of dicts. Each calibration result should have a name
 but if you're just tweaking certain settings then it may make sense to have multiple
 calibration attempts with the same name (e.g., adjusting the population size)
 
