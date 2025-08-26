@@ -47,14 +47,14 @@ Optional:
 
 ## Installation:
 - Assuming that you have [conda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html) and [git](https://git-scm.com/downloads) installed for your machine already
-- Clone the repository (and the transit-routing submodule if desired) into your desired directory
-```
+- Clone the repository into your desired directory
+<!-- ```
 # without TransitSim
 git clone https://github.com/reidx19/BikewayDev 
 
 # with TransitSim
 git clone --recurse-submodules -j8 https://github.com/reidx19/BikewayDev 
-```
+``` -->
 - Create a new conda environment named `bikewaysim` using the `environment.yml` file (make sure that you're in the directory with the .yml file)
 ```
 conda env create -f environment.yml
@@ -71,13 +71,14 @@ pip install -e .
 - Most of the code is executed through Jupyter Notebooks which can be opened/run/edited through [VS Code](https://code.visualstudio.com/) or [Jupyter Notebook](https://anaconda.org/anaconda/jupyter), just make sure the `bikewaysim` environment is activated.
 
 ## Initial Setup
-1. Create a [config.json](config.json) file to define the project directory and various settings (e.g., desired projected coordinate system, supplemental data directories, etc.). See `example_config.json` for a template.
-1. Create a new study area using GIS or [bounding box](https://boundingbox.klokantech.com) or provide an existing one. Must be in `.geojson`, `.gpkg`, or `.shp` format.
+1. Create a [config.json](config.json) file to define the project directory and various settings (e.g., desired projected coordinate system, supplemental data, etc.). See `example_config.json` for a template.
+1. Create a new study area using GIS or [bounding box](https://boundingbox.klokantech.com) or provide an existing one. Must be in `.geojson`, `.gpkg`, or `.shp` format. Place it in the root of the project directory.
 
-## Creating a Network
+## Creating a Network (`network` module)
 1. Download OpenStreetMap network data using [step_0_download_process_osm.ipynb](./network/step_0_download_process_osm.ipynb)
 1. Continue running through each `.ipynb` file in the `network` module in order until [step_8_export_network.ipynb](./network/step_8_export_network.ipynb)
 
+## Running Analysis Using Calibrated Impedances (`bikewaysim_framework` module)
 
 
 

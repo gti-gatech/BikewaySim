@@ -12,6 +12,9 @@ from bikewaysim import general_utils
 from bikewaysim.routing import rustworkx_routing_funcs
 
 def run_code(task):
+    """
+    For doing parallel routing using different networks and batches of OD pairs.
+    """
     network_fp = task[0]
     batch_ods = task[1]
     with network_fp.open('rb') as fh:

@@ -7,7 +7,7 @@ from scipy.spatial import cKDTree
 import nbformat
 from nbconvert.preprocessors import ExecutePreprocessor
 import os
-
+from importlib import import_module
 
 # TODO throw this in utils
 def run_notebook(notebook_path, timeout=600, kernel_name='python3'):
@@ -22,13 +22,19 @@ def run_notebook(notebook_path, timeout=600, kernel_name='python3'):
     with open(notebook_path, "w") as f:
         nbformat.write(notebook, f)
 
-    print(f"Executed {notebook_path.name}")
+    print(f"Executed {os.path.basename(notebook_path)}")
 
 def run_notebooks_in_order(notebook_list,dir):
-    """Runs a list of Jupyter notebooks sequentially."""
+    """Runs a list of Jupyter notebooks or Python scripts sequentially."""
     for notebook in notebook_list:
-        run_notebook(dir/notebook)
-
+        if notebook.endswith('.ipynb'):
+            # If it's a notebook, run it
+            run_notebook(os.path.join(dir, notebook))
+        elif notebook.endswith('.py'):
+            # If it's a Python script, import and run it
+            module_name = notebook[:-3]
+            import_module(module_name)
+            print(f"Executed {module_name}.py")
 
 def print_elapsed_time(seconds):
     # Round the total seconds at the start

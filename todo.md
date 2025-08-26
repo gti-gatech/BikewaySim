@@ -1,6 +1,29 @@
-## 
-1. Try and get a working version of everything before making further changes
-1. After that, we can commit and the create a branch to modify the code further
+## Propel Action Plan (08/21/2025)
+- start with the small study area for speed
+- create/filter the network
+- export the network in the correct format
+    - might need to roll back to a previous commit sometime in november when i had everything working
+- hard code the weights as the default condition
+- run the analysis with LODES first
+
+### 08/21/2025
+- Network module is up and running
+- Need
+
+## Next Step
+- Go back to an earlier version to better understand how the calibration_network.pkl was made
+
+# Have a network sync function
+- objective is to allow people to skip map matching and calibration if they don't have GPS traces
+- in map matching
+    - we allow for the removal of certain links in order to get better map matching results
+- in calibration
+    - we allow for the removal of certain links that are not useful for routing or that could impact the results
+- when people skip straight to the framework
+    - i want to be able to provide default impedances that people can use
+    - so they'd do a direct import from the network section instead of doing it in the calibration section
+- recommendations
+    - move prepare for calibration out to network where it makes sense
 
 
 ## Map Matching
@@ -25,3 +48,14 @@
 ## In general,
 Cut down on the number of notebooks where possible
 Separate out QA/QC and visualizaation parts from the scripted stuff if possible
+
+
+# find where I used to create/export these networks
+    networks = [
+        config['bikewaysim_fp']/'current_traveltime.pkl',
+        config['bikewaysim_fp']/'current_impedance.pkl',
+        config['bikewaysim_fp']/'future_impedance.pkl'
+    ]
+
+# Small changes
+subsets.pkl to trips_for_calibration.pkl

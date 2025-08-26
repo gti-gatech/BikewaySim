@@ -2,6 +2,9 @@ name: bikewaysim
 channels:
   - conda-forge
 dependencies:
+  - jupyter
+  - nbformat # the following two are used for orchestrating the notebooks
+  - nbconvert
   - osmnx
   - pandas
   - pyarrow
@@ -16,7 +19,6 @@ dependencies:
   - beautifulsoup4 # for getting the timestamp of the geofabrik extract
   - branca # for legends
   - contextily
-  - ipykernel # needed for running jupyter notebooks
   - osmium-tool # needed for processing osm extracts
   - laspy # needed for point cloud processing
   - lazrs-python # needed for point cloud processing

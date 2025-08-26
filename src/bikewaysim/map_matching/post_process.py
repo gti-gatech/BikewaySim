@@ -3,26 +3,6 @@ import pickle
 
 from bikewaysim.paths import config
 
-def combine_results():
-    fps = config['matching_fp'].glob("match_dict_*.pkl")
-
-    with (config['matching_fp'] / 'match_settings.pkl').open('rb') as fh:
-        matching_index, _ = pickle.load(fh)
-    print(matching_index)
-    match_dict = {}
-    i = 0
-    for fp in fps:
-        if fp.parts[-1] == 'match_dict_full.pkl':
-            continue
-        with fp.open('rb') as fh:
-            small_match_dict = pickle.load(fh)
-        match_dict.update(small_match_dict)
-        i += len(small_match_dict)
-        del small_match_dict
-
-    with (config['matching_fp'] / f'match_dict_full_{matching_index}.pkl').open('wb') as fh:
-        pickle.dump(match_dict,fh)
-
 def mapmatch_results(match_dict,cutoff):
     '''
     Prints the map match results and returns lists of failed and incomplete matches
@@ -52,4 +32,3 @@ def get_ods_from_match_dict(match_dict,links):
     starts = links.loc[start_edges,'A'].tolist()
     ends = links.loc[end_edges,'B'].tolist()
     return starts, ends
-

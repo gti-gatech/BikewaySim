@@ -1,5 +1,17 @@
 # Running BikewaySim
 
+The schema for OD pairs is:
+
+| dest_taz | orig_taz | trips | orig_N | dest_N |
+|-|-|-|-|-|
+|str|str|int|str|str|
+
+- dest_taz : destination ID
+- orig_taz : origin ID
+- trips : the number of trips between an origin and destination
+- orig_N : origin network node
+- dest_N : destination network node
+
 Components:
 1. Impedance routing for all possible TAZ/census block pairs OR specified ODs on existing network
 1. Impedance routing for all possible TAZ/census block pairs OR specified ODs on future network
@@ -13,3 +25,4 @@ Components:
 Optional Components:
 1. Visualize before/after routes
 1. Inspect percent detour
+

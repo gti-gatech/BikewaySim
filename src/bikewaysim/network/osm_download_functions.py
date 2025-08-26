@@ -186,7 +186,6 @@ def find_positions(seq, sublist):
     for i in range(len(seq) - len(sublist) + 1):
         if seq[i:i + len(sublist)] == sublist:
             return i, i + len(sublist) - 1
-    return None
 
 def get_direction(osmid, node_sequence, way_nodes):
     # Larger list and smaller list
@@ -197,7 +196,7 @@ def get_direction(osmid, node_sequence, way_nodes):
     doubled_larger_list = larger_list[:-1] + larger_list
     len_larger = len(larger_list) - 1
 
-    # Find positions in doubled list
+    # Find positions in normal list
     forward_positions = find_positions(larger_list, smaller_list)
     reverse_positions = find_positions(larger_list, smaller_list[::-1])
 
@@ -230,8 +229,8 @@ def get_direction(osmid, node_sequence, way_nodes):
         if end >= len_larger:
             end -= len_larger
         return 'reverse', start, end
-
-    return 'error'
+    
+    raise Exception("Something wrong happened")
 
 
 # TODO there's a more efficient way to do this but it's important that each
@@ -266,8 +265,11 @@ def add_start_end_dists(links,raw_links,line_node_ids):
         #get the sequence of nodes
         node_sequence = [possible_node_ids[i] for i in idx]   
         #get whether it's forward or a wraparound
-        result, start, end = get_direction(link['osmid'],node_sequence,line_node_ids)
-
+        #BUG get_direction doesn't always assign a direction
+        try:
+            result, start, end = get_direction(link['osmid'],node_sequence,line_node_ids)
+        except:
+            pass
         if start < end:
             #use position of the first point
             if start == 0:

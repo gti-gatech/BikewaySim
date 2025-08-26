@@ -1,0 +1,49 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/28.0.6 Chrome/138.0.7204.100 Electron/37.2.3 Safari/537.36" version="28.0.6">
+  <diagram name="Page-1" id="oe3oVWXlboh_UxMN1cet">
+    <mxGraphModel dx="466" dy="722" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="PYSeJpHn__F_yQQu3Eva-4" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="1" source="PYSeJpHn__F_yQQu3Eva-1" target="PYSeJpHn__F_yQQu3Eva-2" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="PYSeJpHn__F_yQQu3Eva-1" value="GPS Traces?" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="160" y="210" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="PYSeJpHn__F_yQQu3Eva-2" value="Use default impedances" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="250" y="300" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="PYSeJpHn__F_yQQu3Eva-3" value="Calibrate impedances" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="70" y="410" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="PYSeJpHn__F_yQQu3Eva-5" value="Use default impedances" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="70" y="300" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="PYSeJpHn__F_yQQu3Eva-7" value="Network Files" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=26;fillColor=none;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;html=1;" parent="1" vertex="1">
+          <mxGeometry x="260" y="400" width="140" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="PYSeJpHn__F_yQQu3Eva-9" value="network.pkl : contains d" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" parent="PYSeJpHn__F_yQQu3Eva-7" vertex="1">
+          <mxGeometry y="26" width="140" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="PYSeJpHn__F_yQQu3Eva-11" value="Item 3" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" parent="PYSeJpHn__F_yQQu3Eva-7" vertex="1">
+          <mxGeometry y="52" width="140" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="PYSeJpHn__F_yQQu3Eva-8" value="Item 1" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" parent="PYSeJpHn__F_yQQu3Eva-7" vertex="1">
+          <mxGeometry y="78" width="140" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="PYSeJpHn__F_yQQu3Eva-10" value="Item 3" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" parent="PYSeJpHn__F_yQQu3Eva-7" vertex="1">
+          <mxGeometry y="104" width="140" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="sKESev7PUxDiDu4r6bqG-1" value="OSM" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="600" y="200" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="sKESev7PUxDiDu4r6bqG-2" value="Final Network" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="600" y="280" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="sKESev7PUxDiDu4r6bqG-4" value="rustworkx network" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="600" y="370" width="120" height="60" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

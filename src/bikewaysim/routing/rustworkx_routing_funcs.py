@@ -7,12 +7,12 @@ from bikewaysim.paths import config
 
 '''
 Contains all of the functions needed for shortest path routing and handling the turn network
-
 '''
 
 def import_calibration_network(config):
     '''
     Backend function for loading calibration network files
+    #TODO separate this process out from calibration
     '''
     # import the calibration network
     with (config['calibration_fp']/"calibration_network.pkl").open('rb') as fh:
