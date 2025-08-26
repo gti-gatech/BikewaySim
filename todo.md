@@ -12,7 +12,14 @@
 ## Next Steps
 - Go back to an earlier version to better understand how the calibration_network.pkl was made
 
+Network Files Explainer
 
+| Name | Description |
+| - | - |
+| directed_links.parquet | contains directional attributes like incline and bike facility |
+| final_network_edges.pkl | Non-directed edges with all other attributes and the edge geometries |
+| final_network.gpkg, nodes | Geopackage with the nodes, just IDs and geometry |
+| turns_df.parquet | table of turns with turn attributes like left turn/right turn/unig_crossing/etc. |
 
 
 
