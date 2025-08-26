@@ -78,6 +78,9 @@ pip install -e .
 1. Download OpenStreetMap network data using [step_0_download_process_osm.ipynb](./network/step_0_download_process_osm.ipynb)
 1. Continue running through each `.ipynb` file in the `network` module in order until [step_8_export_network.ipynb](./network/step_8_export_network.ipynb)
 
+## Configuring network routing settings (`routing_settings` module)
+1. Run the notebooks
+
 ## Running Analysis Using Calibrated Impedances (`bikewaysim_framework` module)
 
 

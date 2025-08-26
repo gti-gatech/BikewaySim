@@ -12,6 +12,8 @@
 *.csv
 *.gpkg
 *.dbf
+*.bkp
+*.dtmp
 .DS_Store
 config.json
 **/__pycache__/

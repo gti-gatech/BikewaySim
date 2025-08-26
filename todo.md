@@ -8,10 +8,14 @@
 
 ### 08/21/2025
 - Network module is up and running
-- Need
 
-## Next Step
+## Next Steps
 - Go back to an earlier version to better understand how the calibration_network.pkl was made
+
+
+
+
+
 
 # Have a network sync function
 - objective is to allow people to skip map matching and calibration if they don't have GPS traces
@@ -43,11 +47,6 @@
 
 ## New module that focusses on aggregated statistics on links?
 
-
-
-## In general,
-Cut down on the number of notebooks where possible
-Separate out QA/QC and visualizaation parts from the scripted stuff if possible
 
 
 # find where I used to create/export these networks
