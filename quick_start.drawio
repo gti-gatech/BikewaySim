@@ -43,6 +43,15 @@
         <mxCell id="sKESev7PUxDiDu4r6bqG-4" value="rustworkx network" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
           <mxGeometry x="600" y="370" width="120" height="60" as="geometry" />
         </mxCell>
+        <mxCell id="sKESev7PUxDiDu4r6bqG-5" value="Turns" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="620" y="650" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="sKESev7PUxDiDu4r6bqG-6" value="Directed Links" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="490" y="650" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="sKESev7PUxDiDu4r6bqG-7" value="Undirected Links" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="450" y="390" width="120" height="60" as="geometry" />
+        </mxCell>
       </root>
     </mxGraphModel>
   </diagram>
